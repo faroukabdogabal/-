@@ -1,0 +1,8 @@
+{
+  "name": "قرآن ريلز — صانع المقاطع القرآنية المجاني",
+  "description": "منصة مجانية وصدقة جارية لصناعة مقاطع الفيديو القرآنية القصيرة (Reels & Shorts) بجودة عالية وبدون علامة مائية أو تسجيل، مع أكثر من 35 قارئاً وتظليل متزامن للكلمات.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
