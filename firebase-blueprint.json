@@ -1,0 +1,253 @@
+{
+  "entities": {
+    "SiteConfig": {
+      "title": "SiteConfig",
+      "description": "Global Quran Reels platform configuration controlled exclusively by the master admin farouk.gabal@gmail.com.",
+      "type": "object",
+      "properties": {
+        "siteTitle": {
+          "type": "string",
+          "description": "Platform brand title displayed in header and footer.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "sadaqahLabel": {
+          "type": "string",
+          "description": "Official Sadaqah Jariyah dedication phrase across the site and default video footer.",
+          "minLength": 2,
+          "maxLength": 120
+        },
+        "heroHeadline": {
+          "type": "string",
+          "description": "Main headline displayed in the hero section.",
+          "minLength": 5,
+          "maxLength": 180
+        },
+        "heroSubtitle": {
+          "type": "string",
+          "description": "Supporting description displayed below the hero headline.",
+          "minLength": 10,
+          "maxLength": 350
+        },
+        "announcementBanner": {
+          "type": "string",
+          "description": "Optional site-wide announcement or prayer banner published by the admin.",
+          "minLength": 0,
+          "maxLength": 240
+        },
+        "defaultSurahId": {
+          "type": "integer",
+          "description": "Default Surah number (1-114) loaded in the studio."
+        },
+        "defaultFromAyah": {
+          "type": "integer",
+          "description": "Default starting Ayah number loaded in the studio."
+        },
+        "defaultToAyah": {
+          "type": "integer",
+          "description": "Default ending Ayah number loaded in the studio."
+        },
+        "defaultReciterId": {
+          "type": "string",
+          "description": "Default reciter identifier from catalog.",
+          "minLength": 2,
+          "maxLength": 60,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "defaultBackgroundId": {
+          "type": "string",
+          "description": "Default visual background identifier from catalog.",
+          "minLength": 2,
+          "maxLength": 60,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "allowPublicCustomSadaqah": {
+          "type": "boolean",
+          "description": "Whether public visitors can customize the Sadaqah Jariyah text on their exported videos."
+        },
+        "isPublishedLive": {
+          "type": "boolean",
+          "description": "Whether the public studio is live or temporarily paused in maintenance mode by the admin."
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the exclusive master administrator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp of initial configuration creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest administrative publish or edit."
+        }
+      },
+      "required": [
+        "siteTitle",
+        "sadaqahLabel",
+        "heroHeadline",
+        "heroSubtitle",
+        "announcementBanner",
+        "defaultSurahId",
+        "defaultFromAyah",
+        "defaultToAyah",
+        "defaultReciterId",
+        "defaultBackgroundId",
+        "allowPublicCustomSadaqah",
+        "isPublishedLive",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PublishedPreset": {
+      "title": "PublishedPreset",
+      "description": "Curated Quranic passage preset published and managed exclusively by the master admin.",
+      "type": "object",
+      "properties": {
+        "titleArabic": {
+          "type": "string",
+          "description": "Display title of the Quranic preset.",
+          "minLength": 2,
+          "maxLength": 80
+        },
+        "subtitleArabic": {
+          "type": "string",
+          "description": "Surah and verse range label.",
+          "minLength": 2,
+          "maxLength": 60
+        },
+        "surahId": {
+          "type": "integer",
+          "description": "Surah number between 1 and 114."
+        },
+        "fromAyah": {
+          "type": "integer",
+          "description": "Starting verse number."
+        },
+        "toAyah": {
+          "type": "integer",
+          "description": "Ending verse number."
+        },
+        "reciterId": {
+          "type": "string",
+          "description": "Selected reciter identifier.",
+          "minLength": 2,
+          "maxLength": 60,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "backgroundId": {
+          "type": "string",
+          "description": "Selected background preset identifier.",
+          "minLength": 2,
+          "maxLength": 60,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["published", "draft"],
+          "description": "Publication visibility status."
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the master admin creator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest update."
+        }
+      },
+      "required": [
+        "titleArabic",
+        "subtitleArabic",
+        "surahId",
+        "fromAyah",
+        "toAyah",
+        "reciterId",
+        "backgroundId",
+        "status",
+        "ownerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminProfile": {
+      "title": "AdminProfile",
+      "description": "Private PII-isolated record of the sole administrator farouk.gabal@gmail.com holding all roles and permissions.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID matching the document ID.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified administrator email address (must be farouk.gabal@gmail.com).",
+          "minLength": 5,
+          "maxLength": 120
+        },
+        "roleSummary": {
+          "type": "string",
+          "description": "Full Arabic title of administrative authority.",
+          "minLength": 5,
+          "maxLength": 200
+        },
+        "permissions": {
+          "type": "string",
+          "enum": ["ALL_PERMISSIONS_OWNER_AGENT_MANAGER_ADMIN_EDITOR_PUBLISHER"],
+          "description": "Canonical permission scope token."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable registration server timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last active verification server timestamp."
+        }
+      },
+      "required": [
+        "uid",
+        "email",
+        "roleSummary",
+        "permissions",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/site_config/{configId}": {
+      "schema": { "$ref": "#/entities/SiteConfig" },
+      "description": "Singleton global configuration document (/site_config/main) publicly readable via get and writable exclusively by farouk.gabal@gmail.com."
+    },
+    "/published_presets/{presetId}": {
+      "schema": { "$ref": "#/entities/PublishedPreset" },
+      "description": "Curated Quranic Reels presets publicly readable when status == 'published' and fully managed exclusively by farouk.gabal@gmail.com."
+    },
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminProfile" },
+      "description": "Private administrator identity and authority record isolated from public reads and accessible exclusively by farouk.gabal@gmail.com."
+    }
+  }
+}

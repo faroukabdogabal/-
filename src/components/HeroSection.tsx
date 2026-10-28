@@ -1,8 +1,10 @@
 import { ArrowDown, Sparkles } from 'lucide-react';
-import { QUICK_PRESETS } from '../data/quranCatalog';
+import { SiteConfigData } from '../firebase';
 import { QuickPreset } from '../types/quran';
 
 interface HeroSectionProps {
+  siteConfig: SiteConfigData;
+  presets: QuickPreset[];
   activePresetId: string | null;
   sharedDedicationBanner: string | null;
   onSelectPreset: (preset: QuickPreset) => void;
@@ -10,6 +12,8 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({
+  siteConfig,
+  presets,
   activePresetId,
   sharedDedicationBanner,
   onSelectPreset,
@@ -18,6 +22,14 @@ export function HeroSection({
   return (
     <section className="relative border-b border-slate-800/70 bg-[#0B0F14] pt-10 pb-12 sm:pt-14 sm:pb-16">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6">
+        {siteConfig.announcementBanner.trim().length > 0 && (
+          <div className="mb-6 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-5 py-3.5 text-center">
+            <p className="text-sm sm:text-base font-medium text-emerald-200">
+              {siteConfig.announcementBanner}
+            </p>
+          </div>
+        )}
+
         {sharedDedicationBanner && (
           <div className="mb-8 rounded-xl border border-amber-500/30 bg-amber-500/5 px-5 py-4 text-center">
             <p className="text-xs text-amber-300/80 mb-1">مقطع قرآني مُهدى كصدقة جارية</p>
@@ -36,15 +48,15 @@ export function HeroSection({
             <span aria-hidden="true">·</span>
             <span>بدون تسجيل حساب</span>
             <span aria-hidden="true">·</span>
-            <span className="text-emerald-400 font-medium">صدقة جارية عن عائلة فاروق جبل</span>
+            <span className="text-emerald-400 font-medium">{siteConfig.sadaqahLabel}</span>
           </div>
 
           <h1 className="text-[clamp(2.1rem,4vw,3.5rem)] font-bold leading-[1.2] tracking-tight text-slate-50 mb-5">
-            صانع المقاطع القرآنية القصيرة بجودة عالية وتظليل متزامن للكلمات
+            {siteConfig.heroHeadline}
           </h1>
 
           <p className="mx-auto max-w-2xl text-base sm:text-lg leading-relaxed text-slate-400 mb-8">
-            أنشئ مقاطع ريلز وشورتس وتيك توك قرآنية بتصميم رأسي احترافي خلال ثوانٍ. اختر من بين ٣٦ قارئاً، حدد الآيات والترجمة، وحمّل الفيديو بصيغة MP4 مجاناً وبلا حقوق أو علامات مائية.
+            {siteConfig.heroSubtitle}
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-4 mb-10">
@@ -75,7 +87,7 @@ export function HeroSection({
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-            {QUICK_PRESETS.map((preset) => {
+            {presets.map((preset) => {
               const isSelected = activePresetId === preset.id;
               return (
                 <button

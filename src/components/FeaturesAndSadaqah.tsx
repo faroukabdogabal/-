@@ -1,11 +1,27 @@
 import { useState } from 'react';
-import { Check, ChevronDown, Copy, HeartHandshake, PlayCircle } from 'lucide-react';
-import { QUICK_PRESETS } from '../data/quranCatalog';
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  HeartHandshake,
+  PlayCircle,
+  ShieldCheck,
+} from 'lucide-react';
+import { MASTER_ADMIN_EMAIL } from '../firebase';
 import { QuickPreset } from '../types/quran';
 
 interface FeaturesAndSadaqahProps {
+  siteTitle: string;
+  sadaqahLabel: string;
+  presets: QuickPreset[];
+  allowCustomSadaqah: boolean;
+  isMasterAdmin: boolean;
+  onOpenAdmin: () => void;
   onCreateDedicatedReel: (dedicationText: string, preset: QuickPreset) => void;
-  onBuildShareUrlForDedication: (dedicationText: string, preset: QuickPreset) => Promise<boolean>;
+  onBuildShareUrlForDedication: (
+    dedicationText: string,
+    preset: QuickPreset
+  ) => Promise<boolean>;
 }
 
 const FAQ_ITEMS = [
@@ -26,12 +42,18 @@ const FAQ_ITEMS = [
     a: 'نعم، يمكنك اختيار أي خلفية من مكتبة المناظر الطبيعية الهادئة المدمجة، أو رفع صورة أو مقطع فيديو خاص من هاتفك أو حاسوبك مباشرة دون رفع ملفاتك لأي خادم خارجي.',
   },
   {
-    q: 'كيف أشارك مقطعاً كصدقة جارية عن متوفى أو من أحب؟',
-    a: 'يمكنك كتابة اسم المتوفى أو الدعاء في خانة الصدقة الجارية ليظهر داخل الفيديو عند تحميله، أو نسخ رابط مباشر من قسم الصدقة الجارية بالأسفل وإرساله عبر واتساب ليُفتح المقطع جاهزاً للاستماع باسم من تحب.',
+    q: 'من هو المسؤول والمدير والمخوّل بالنشر والتعديل في المنصة؟',
+    a: `جميع حقوق الإدارة والوكالة والنشر والتغيير والتعديل والتحرير داخل منصة قرآن ريلز محصورة حصرياً ومؤمّنة برمجياً لحساب المسؤول والمدير العام (${MASTER_ADMIN_EMAIL})، بينما يظل استخدام الاستوديو وصناعة وتحميل المقاطع مجانياً ومتاحاً لجميع الزوار كصدقة جارية.`,
   },
 ];
 
 export function FeaturesAndSadaqah({
+  siteTitle,
+  sadaqahLabel,
+  presets,
+  allowCustomSadaqah,
+  isMasterAdmin,
+  onOpenAdmin,
   onCreateDedicatedReel,
   onBuildShareUrlForDedication,
 }: FeaturesAndSadaqahProps) {
@@ -40,15 +62,19 @@ export function FeaturesAndSadaqah({
   const [copiedDedicatedUrl, setCopiedDedicatedUrl] = useState(false);
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
+  const canCustomizeDedication = allowCustomSadaqah || isMasterAdmin;
+
   const buildDedicationPhrase = () => {
+    if (!canCustomizeDedication) return sadaqahLabel;
     const clean = lovedOneName.trim();
     return clean
       ? `صدقة جارية عن ${clean} — اللهم اجعل القرآن نوراً ورفعة`
-      : 'صدقة جارية عن عائلة فاروق جبل';
+      : sadaqahLabel;
   };
 
   const handleCopyDedicatedLink = async () => {
-    const preset = QUICK_PRESETS[selectedPresetIdx] || QUICK_PRESETS[0];
+    const preset = presets[selectedPresetIdx] || presets[0];
+    if (!preset) return;
     const ok = await onBuildShareUrlForDedication(buildDedicationPhrase(), preset);
     if (ok) {
       setCopiedDedicatedUrl(true);
@@ -136,34 +162,45 @@ export function FeaturesAndSadaqah({
               <div className="lg:col-span-6 space-y-4">
                 <div className="inline-flex items-center gap-2 text-xs sm:text-sm font-medium text-amber-300">
                   <HeartHandshake className="w-4 h-4" />
-                  <span>صدقة جارية عن عائلة فاروق جبل</span>
+                  <span>{sadaqahLabel}</span>
                 </div>
                 <h2 className="text-2xl sm:text-3xl font-bold text-slate-50 leading-snug">
                   اصنع أو شارك مقطعاً قرآنياً كصدقة جارية عنك وعن من تحب
                 </h2>
                 <p className="text-sm sm:text-base text-slate-400 leading-relaxed">
-                  قال رسول الله ﷺ: «إذا مات الإنسان انقطع عنه عمله إلا من ثلاثة: إلا من صدقة جارية، أو علم ينتفع به، أو ولد صالح يدعو له». اكتب اسم من تحب واختر الآيات، ثم افتحها في الاستوديو لتحميلها كفيديو أو انسخ رابطها المباشر لمشاركتها فوراً.
+                  قال رسول الله ﷺ: «إذا مات الإنسان انقطع عنه عمله إلا من ثلاثة: إلا من صدقة جارية، أو علم ينتفع به، أو ولد صالح يدعو له». اختر الآيات، ثم افتحها في الاستوديو لتحميلها كفيديو أو انسخ رابطها المباشر لمشاركتها فوراً.
                 </p>
               </div>
 
               <div className="lg:col-span-6 space-y-4">
-                <div>
-                  <label
-                    htmlFor="loved-one-input"
-                    className="block text-xs sm:text-sm font-medium text-slate-200 mb-1.5"
-                  >
-                    اسم المُهدى إليه أو نية الصدقة الجارية
-                  </label>
-                  <input
-                    id="loved-one-input"
-                    type="text"
-                    maxLength={55}
-                    value={lovedOneName}
-                    onChange={(e) => setLovedOneName(e.target.value)}
-                    placeholder="مثال: روح والدي، والدتي، أو جميع موتى المسلمين..."
-                    className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
-                  />
-                </div>
+                {canCustomizeDedication ? (
+                  <div>
+                    <label
+                      htmlFor="loved-one-input"
+                      className="block text-xs sm:text-sm font-medium text-slate-200 mb-1.5"
+                    >
+                      اسم المُهدى إليه أو نية الصدقة الجارية (اختياري)
+                    </label>
+                    <input
+                      id="loved-one-input"
+                      type="text"
+                      maxLength={55}
+                      value={lovedOneName}
+                      onChange={(e) => setLovedOneName(e.target.value)}
+                      placeholder="مثال: روح والدي، والدتي، أو جميع موتى المسلمين..."
+                      className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs sm:text-sm font-medium text-slate-200 mb-1.5">
+                      عبارة الصدقة الجارية المعتمدة
+                    </label>
+                    <div className="w-full rounded-lg border border-slate-800 bg-[#0B0F14]/80 px-4 py-3 text-sm text-emerald-300">
+                      {sadaqahLabel}
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label
@@ -178,7 +215,7 @@ export function FeaturesAndSadaqah({
                     onChange={(e) => setSelectedPresetIdx(Number(e.target.value))}
                     className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-4 py-3 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
                   >
-                    {QUICK_PRESETS.map((p, idx) => (
+                    {presets.map((p, idx) => (
                       <option key={p.id} value={idx}>
                         {p.titleArabic} ({p.subtitleArabic})
                       </option>
@@ -189,16 +226,16 @@ export function FeaturesAndSadaqah({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() =>
-                      onCreateDedicatedReel(
-                        buildDedicationPhrase(),
-                        QUICK_PRESETS[selectedPresetIdx] || QUICK_PRESETS[0]
-                      )
-                    }
+                    onClick={() => {
+                      const chosen = presets[selectedPresetIdx] || presets[0];
+                      if (chosen) {
+                        onCreateDedicatedReel(buildDedicationPhrase(), chosen);
+                      }
+                    }}
                     className="flex items-center justify-center gap-2 rounded-lg bg-emerald-400 px-4 py-3 text-xs sm:text-sm font-semibold text-slate-950 hover:bg-emerald-300 transition-colors cursor-pointer whitespace-nowrap"
                   >
                     <PlayCircle className="w-4 h-4 shrink-0" />
-                    <span>تجهيز وتحميل الفيديو بالاسم</span>
+                    <span>تجهيز وتحميل الفيديو</span>
                   </button>
 
                   <button
@@ -270,27 +307,51 @@ export function FeaturesAndSadaqah({
         </div>
       </section>
 
-      {/* Quiet Minimal Footer */}
+      {/* Quiet Minimal Footer with Exclusive Ownership Attribution */}
       <footer className="border-t border-slate-800/80 bg-[#0B0F14] py-8">
-        <div className="mx-auto max-w-[1320px] px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-slate-300">قرآن ريلز</span>
-            <span aria-hidden="true">·</span>
-            <span>منصة مجانية وصدقة جارية عن عائلة فاروق جبل لنشر القرآن الكريم بدون إعلانات أو علامات مائية</span>
+        <div className="mx-auto max-w-[1320px] px-4 sm:px-6 space-y-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 text-center sm:text-right">
+              <span className="font-bold text-slate-300">{siteTitle}</span>
+              <span aria-hidden="true">·</span>
+              <span>
+                منصة مجانية و{sadaqahLabel} لنشر القرآن الكريم بدون إعلانات أو علامات مائية
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-5">
+              <a href="#studio" className="hover:text-slate-300 transition-colors">
+                الاستوديو
+              </a>
+              <a href="#features" className="hover:text-slate-300 transition-colors">
+                المميزات
+              </a>
+              <a href="#sadaqah" className="hover:text-slate-300 transition-colors">
+                صدقة جارية
+              </a>
+              <a href="#faq" className="hover:text-slate-300 transition-colors">
+                الأسئلة الشائعة
+              </a>
+            </div>
           </div>
-          <div className="flex items-center gap-5">
-            <a href="#studio" className="hover:text-slate-300 transition-colors">
-              الاستوديو
-            </a>
-            <a href="#features" className="hover:text-slate-300 transition-colors">
-              المميزات
-            </a>
-            <a href="#sadaqah" className="hover:text-slate-300 transition-colors">
-              صدقة جارية
-            </a>
-            <a href="#faq" className="hover:text-slate-300 transition-colors">
-              الأسئلة الشائعة
-            </a>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-800/60 pt-4 text-[11px] sm:text-xs text-slate-400">
+            <div className="text-center sm:text-right">
+              <span>
+                الإدارة والوكالة وحقوق النشر والتغيير والتعديل والتحرير محفوظة حصرياً للمسؤول والمدير العام:{' '}
+              </span>
+              <span className="font-mono text-slate-300">{MASTER_ADMIN_EMAIL}</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="inline-flex items-center gap-1.5 text-slate-300 hover:text-emerald-300 transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>
+                {isMasterAdmin ? 'لوحة المسؤول العام (متصل)' : 'دخول المسؤول والمدير'}
+              </span>
+            </button>
           </div>
         </div>
       </footer>

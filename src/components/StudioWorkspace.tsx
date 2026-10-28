@@ -55,6 +55,9 @@ interface StudioWorkspaceProps {
   reelError: string | null;
   onReloadReel: () => void;
   onCopyShareLink: () => Promise<boolean>;
+  allowCustomSadaqah: boolean;
+  officialSadaqahLabel: string;
+  isMasterAdmin: boolean;
 }
 
 function formatSeconds(sec: number): string {
@@ -74,6 +77,9 @@ export function StudioWorkspace({
   reelError,
   onReloadReel,
   onCopyShareLink,
+  allowCustomSadaqah,
+  officialSadaqahLabel,
+  isMasterAdmin,
 }: StudioWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<StudioTab>('quran');
   const [surahQuery, setSurahQuery] = useState('');
@@ -1299,42 +1305,59 @@ export function StudioWorkspace({
                       htmlFor="sadaqah-input"
                       className="block text-sm font-semibold text-slate-200 mb-1.5"
                     >
-                      سطر الإهداء أو الصدقة الجارية داخل الفيديو (اختياري)
+                      سطر الإهداء أو الصدقة الجارية داخل الفيديو
                     </label>
-                    <p className="text-xs text-slate-400 mb-3">
-                      يظهر بخط هادئ أسفل الفيديو بدون أي شعارات للموقع. يمكنك كتابة دعاء أو اسم من تحب أو تركه فارغاً تماماً.
-                    </p>
-                    <input
-                      id="sadaqah-input"
-                      type="text"
-                      maxLength={75}
-                      value={settings.sadaqahText}
-                      onChange={(e) =>
-                        onUpdateSettings({ sadaqahText: e.target.value })
-                      }
-                      placeholder="مثال: صدقة جارية عن عائلة فاروق جبل..."
-                      className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none mb-2.5"
-                    />
-
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        'صدقة جارية عن عائلة فاروق جبل',
-                        'صدقة جارية عن موتانا وموتى المسلمين',
-                        'اللهم اجعل القرآن العظيم ربيع قلوبنا',
-                        '',
-                      ].map((suggestion, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() =>
-                            onUpdateSettings({ sadaqahText: suggestion })
+                    {allowCustomSadaqah || isMasterAdmin ? (
+                      <>
+                        <p className="text-xs text-slate-400 mb-3">
+                          يظهر بخط هادئ أسفل الفيديو بدون أي شعارات للموقع. يمكنك كتابة دعاء أو اسم من تحب أو تركه فارغاً تماماً.
+                        </p>
+                        <input
+                          id="sadaqah-input"
+                          type="text"
+                          maxLength={75}
+                          value={settings.sadaqahText}
+                          onChange={(e) =>
+                            onUpdateSettings({ sadaqahText: e.target.value })
                           }
-                          className="rounded-md border border-slate-800 bg-[#0E131A] px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white cursor-pointer"
-                        >
-                          {suggestion || 'إخفاء النص الإضافي تماماً'}
-                        </button>
-                      ))}
-                    </div>
+                          placeholder={`مثال: ${officialSadaqahLabel}...`}
+                          className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-emerald-500 focus:outline-none mb-2.5"
+                        />
+
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            officialSadaqahLabel,
+                            'صدقة جارية عن موتانا وموتى المسلمين',
+                            'اللهم اجعل القرآن العظيم ربيع قلوبنا',
+                            '',
+                          ].map((suggestion, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() =>
+                                onUpdateSettings({ sadaqahText: suggestion })
+                              }
+                              className="rounded-md border border-slate-800 bg-[#0E131A] px-2.5 py-1.5 text-xs text-slate-300 hover:border-slate-700 hover:text-white cursor-pointer"
+                            >
+                              {suggestion || 'إخفاء النص الإضافي تماماً'}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs text-amber-300/90 mb-2.5">
+                          تم تثبيت عبارة الصدقة الجارية الرسمية على جميع المقاطع من قِبل إدارة المنصة.
+                        </p>
+                        <input
+                          id="sadaqah-input"
+                          type="text"
+                          readOnly
+                          value={officialSadaqahLabel}
+                          className="w-full rounded-lg border border-slate-800 bg-[#0B0F14]/70 px-4 py-2.5 text-sm text-slate-300 focus:outline-none"
+                        />
+                      </>
+                    )}
                   </div>
 
                   {/* Locked Fast 720p HD Quality */}
