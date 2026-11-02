@@ -149,6 +149,34 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidPublicStats(data) {
+      return data.keys().hasAll([
+          'exportedVideosCount',
+          'createdReelsCount',
+          'sharedSadaqahCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'exportedVideosCount',
+          'createdReelsCount',
+          'sharedSadaqahCount',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.exportedVideosCount is int && data.exportedVideosCount >= 0 && data.exportedVideosCount <= 1000000000
+        && data.createdReelsCount is int && data.createdReelsCount >= 0 && data.createdReelsCount <= 1000000000
+        && data.sharedSadaqahCount is int && data.sharedSadaqahCount >= 0 && data.sharedSadaqahCount <= 1000000000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isInitialSingleIncrement(data) {
+      return (data.exportedVideosCount == 1 && data.createdReelsCount == 0 && data.sharedSadaqahCount == 0)
+        || (data.exportedVideosCount == 0 && data.createdReelsCount == 1 && data.sharedSadaqahCount == 0)
+        || (data.exportedVideosCount == 0 && data.createdReelsCount == 0 && data.sharedSadaqahCount == 1);
+    }
+
     // 1. Singleton Site Configuration (/site_config/main)
     match /site_config/{configId} {
       allow get: if isValidId(configId) && configId == 'main';
@@ -248,6 +276,46 @@ service cloud.firestore {
           'permissions',
           'updatedAt'
         ]);
+
+      allow delete: if false;
+    }
+
+    // 4. Singleton Global Public Statistics Counter (/public_stats/global)
+    match /public_stats/{statsId} {
+      allow get: if isValidId(statsId) && statsId == 'global';
+      allow list: if false;
+
+      allow create: if isValidId(statsId)
+        && statsId == 'global'
+        && isValidPublicStats(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (isInitialSingleIncrement(incoming()) || isMasterAdmin());
+
+      allow update: if isValidPublicStats(incoming())
+        && isValidId(statsId)
+        && statsId == 'global'
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Atomic +1 Video/Media Export Increment
+          (incoming().exportedVideosCount == existing().exportedVideosCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['exportedVideosCount', 'updatedAt']))
+          // Action 2: Atomic +1 Studio Reel Creation Increment
+          || (incoming().createdReelsCount == existing().createdReelsCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['createdReelsCount', 'updatedAt']))
+          // Action 3: Atomic +1 Sadaqah Jariyah Share Increment
+          || (incoming().sharedSadaqahCount == existing().sharedSadaqahCount + 1
+            && incoming().diff(existing()).affectedKeys().hasOnly(['sharedSadaqahCount', 'updatedAt']))
+          // Action 4: Exclusive Master Admin Calibration Escape Hatch
+          || (isMasterAdmin()
+            && incoming().diff(existing()).affectedKeys().hasOnly([
+              'exportedVideosCount',
+              'createdReelsCount',
+              'sharedSadaqahCount',
+              'updatedAt'
+            ]))
+        );
 
       allow delete: if false;
     }

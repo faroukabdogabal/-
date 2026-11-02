@@ -7,6 +7,7 @@ import { FeaturesAndSadaqah } from './components/FeaturesAndSadaqah';
 import { HeroSection } from './components/HeroSection';
 import { IslamicToolsSection } from './components/IslamicToolsSection';
 import { Navbar } from './components/Navbar';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { StudioWorkspace } from './components/StudioWorkspace';
 import {
   BACKGROUNDS,
@@ -19,12 +20,15 @@ import { SURAHS_FALLBACK } from './data/surahsList';
 import {
   auth,
   db,
+  DEFAULT_PUBLIC_STATS,
   DEFAULT_SITE_CONFIG,
   handleFirestoreError,
+  incrementPublicStatCounter,
   isVerifiedMasterAdmin,
   ManagedPresetRecord,
   MASTER_ADMIN_EMAIL,
   OperationType,
+  PublicStatsData,
   SiteConfigData,
   syncMasterAdminProfile,
 } from './firebase';
@@ -143,6 +147,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAuthReady, setIsAuthReady] = useState<boolean>(false);
   const [siteConfig, setSiteConfig] = useState<SiteConfigData>(DEFAULT_SITE_CONFIG);
+  const [publicStats, setPublicStats] = useState<PublicStatsData>(DEFAULT_PUBLIC_STATS);
+  const [isStatsLoaded, setIsStatsLoaded] = useState<boolean>(false);
   const [managedPresets, setManagedPresets] = useState<ManagedPresetRecord[]>([]);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
 
@@ -319,6 +325,56 @@ export default function App() {
     return () => unsubscribe();
   }, [isAuthReady, isMasterAdmin]);
 
+  // Real-time subscription to global public statistics counter (/public_stats/global)
+  useEffect(() => {
+    if (!isAuthReady) return;
+    const statsRef = doc(db, 'public_stats', 'global');
+
+    const unsubscribe = onSnapshot(
+      statsRef,
+      (snap) => {
+        if (!snap.exists()) {
+          setPublicStats(DEFAULT_PUBLIC_STATS);
+          setIsStatsLoaded(true);
+          return;
+        }
+        const raw = snap.data() as Partial<PublicStatsData>;
+        setPublicStats({
+          exportedVideosCount:
+            typeof raw.exportedVideosCount === 'number' && raw.exportedVideosCount >= 0
+              ? raw.exportedVideosCount
+              : 0,
+          createdReelsCount:
+            typeof raw.createdReelsCount === 'number' && raw.createdReelsCount >= 0
+              ? raw.createdReelsCount
+              : 0,
+          sharedSadaqahCount:
+            typeof raw.sharedSadaqahCount === 'number' && raw.sharedSadaqahCount >= 0
+              ? raw.sharedSadaqahCount
+              : 0,
+        });
+        setIsStatsLoaded(true);
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.GET, 'public_stats/global');
+      }
+    );
+
+    return () => unsubscribe();
+  }, [isAuthReady]);
+
+  const recordReelCreated = useCallback(() => {
+    incrementPublicStatCounter('createdReelsCount').catch(() => {});
+  }, []);
+
+  const recordReelExported = useCallback(() => {
+    incrementPublicStatCounter('exportedVideosCount').catch(() => {});
+  }, []);
+
+  const recordSadaqahShared = useCallback(() => {
+    incrementPublicStatCounter('sharedSadaqahCount').catch(() => {});
+  }, []);
+
   // Combined presets shown on the public homepage & Sadaqah selector
   const combinedPublicPresets = useMemo<QuickPreset[]>(() => {
     const publishedCustom: QuickPreset[] = managedPresets
@@ -423,9 +479,10 @@ export default function App() {
         backgroundId: preset.backgroundId,
         customBgType: 'none',
       }));
+      recordReelCreated();
       scrollToStudio();
     },
-    [scrollToStudio]
+    [scrollToStudio, recordReelCreated]
   );
 
   const handleLoadVerseFromTool = useCallback(
@@ -438,9 +495,10 @@ export default function App() {
         fromAyah,
         toAyah: Math.max(fromAyah, Math.min(fromAyah + 29, toAyah)),
       }));
+      recordReelCreated();
       scrollToStudio();
     },
-    [scrollToStudio]
+    [scrollToStudio, recordReelCreated]
   );
 
   const buildShareUrl = useCallback(
@@ -463,8 +521,12 @@ export default function App() {
 
   const handleCopyCurrentShareLink = useCallback(async () => {
     const shareUrl = buildShareUrl();
-    return copyTextSafe(shareUrl);
-  }, [buildShareUrl]);
+    const ok = await copyTextSafe(shareUrl);
+    if (ok) {
+      recordSadaqahShared();
+    }
+    return ok;
+  }, [buildShareUrl, recordSadaqahShared]);
 
   const handleCreateDedicatedReel = useCallback(
     (dedicationText: string, preset: QuickPreset) => {
@@ -483,6 +545,7 @@ export default function App() {
             ? dedicationText
             : siteConfig.sadaqahLabel,
       }));
+      recordReelCreated();
       scrollToStudio();
     },
     [
@@ -490,6 +553,7 @@ export default function App() {
       siteConfig.allowPublicCustomSadaqah,
       siteConfig.sadaqahLabel,
       isMasterAdmin,
+      recordReelCreated,
     ]
   );
 
@@ -506,13 +570,18 @@ export default function App() {
             ? dedicationText
             : siteConfig.sadaqahLabel,
       });
-      return copyTextSafe(shareUrl);
+      const ok = await copyTextSafe(shareUrl);
+      if (ok) {
+        recordSadaqahShared();
+      }
+      return ok;
     },
     [
       buildShareUrl,
       siteConfig.allowPublicCustomSadaqah,
       siteConfig.sadaqahLabel,
       isMasterAdmin,
+      recordSadaqahShared,
     ]
   );
 
@@ -547,6 +616,7 @@ export default function App() {
           onClose={() => setIsAdminModalOpen(false)}
           currentUser={currentUser}
           siteConfig={siteConfig}
+          publicStats={publicStats}
           managedPresets={managedPresets}
           surahs={surahs}
         />
@@ -573,6 +643,8 @@ export default function App() {
       <main className="flex-1">
         <HeroSection
           siteConfig={siteConfig}
+          publicStats={publicStats}
+          isStatsLoaded={isStatsLoaded}
           presets={combinedPublicPresets}
           activePresetId={activePresetId}
           sharedDedicationBanner={sharedBanner}
@@ -593,6 +665,11 @@ export default function App() {
           allowCustomSadaqah={siteConfig.allowPublicCustomSadaqah}
           officialSadaqahLabel={siteConfig.sadaqahLabel}
           isMasterAdmin={isMasterAdmin}
+          publicStats={publicStats}
+          isStatsLoaded={isStatsLoaded}
+          onRecordReelCreated={recordReelCreated}
+          onRecordReelExported={recordReelExported}
+          onRecordSadaqahShared={recordSadaqahShared}
         />
 
         <IslamicToolsSection
@@ -604,6 +681,8 @@ export default function App() {
         <FeaturesAndSadaqah
           siteTitle={siteConfig.siteTitle}
           sadaqahLabel={siteConfig.sadaqahLabel}
+          publicStats={publicStats}
+          isStatsLoaded={isStatsLoaded}
           presets={combinedPublicPresets}
           allowCustomSadaqah={siteConfig.allowPublicCustomSadaqah}
           isMasterAdmin={isMasterAdmin}
@@ -618,9 +697,12 @@ export default function App() {
         onClose={() => setIsAdminModalOpen(false)}
         currentUser={currentUser}
         siteConfig={siteConfig}
+        publicStats={publicStats}
         managedPresets={managedPresets}
         surahs={surahs}
       />
+
+      <OfflineIndicator />
     </div>
   );
 }

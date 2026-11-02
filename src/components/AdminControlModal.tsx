@@ -21,6 +21,8 @@ import {
   isVerifiedMasterAdmin,
   ManagedPresetRecord,
   MASTER_ADMIN_EMAIL,
+  PublicStatsData,
+  savePublicStatsAsAdmin,
   saveSiteConfigAsAdmin,
   signInMasterAdmin,
   signOutUser,
@@ -34,23 +36,27 @@ interface AdminControlModalProps {
   onClose: () => void;
   currentUser: User | null;
   siteConfig: SiteConfigData;
+  publicStats: PublicStatsData;
   managedPresets: ManagedPresetRecord[];
   surahs: SurahMeta[];
 }
 
-type AdminSection = 'general' | 'presets' | 'permissions';
+type AdminSection = 'general' | 'presets' | 'stats' | 'permissions';
 
 export function AdminControlModal({
   isOpen,
   onClose,
   currentUser,
   siteConfig,
+  publicStats,
   managedPresets,
   surahs,
 }: AdminControlModalProps) {
   const [activeSection, setActiveSection] = useState<AdminSection>('general');
   const [formState, setFormState] = useState<SiteConfigData>(siteConfig);
+  const [statsForm, setStatsForm] = useState<PublicStatsData>(publicStats);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingStats, setIsSavingStats] = useState(false);
   const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSigningIn, setIsSigningIn] = useState(false);
@@ -67,6 +73,10 @@ export function AdminControlModal({
   useEffect(() => {
     setFormState(siteConfig);
   }, [siteConfig, isOpen]);
+
+  useEffect(() => {
+    setStatsForm(publicStats);
+  }, [publicStats, isOpen]);
 
   if (!isOpen) return null;
 
@@ -105,6 +115,25 @@ export function AdminControlModal({
       setErrorMsg(err instanceof Error ? err.message : 'تعذر حفظ الإعدادات');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSavePublicStats = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !isMaster) return;
+
+    setIsSavingStats(true);
+    setErrorMsg(null);
+    setSaveFeedback(null);
+
+    try {
+      await savePublicStatsAsAdmin(currentUser, statsForm);
+      setSaveFeedback('تم تحديث وحفظ عداد الإحصائيات العام بنجاح');
+      setTimeout(() => setSaveFeedback(null), 3500);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : 'تعذر تحديث الإحصائيات');
+    } finally {
+      setIsSavingStats(false);
     }
   };
 
@@ -278,7 +307,7 @@ export function AdminControlModal({
               </div>
 
               {/* Navigation Tabs */}
-              <div className="grid grid-cols-3 gap-1.5 rounded-lg bg-[#0E131A] p-1.5 border border-slate-800">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-lg bg-[#0E131A] p-1.5 border border-slate-800">
                 <button
                   type="button"
                   onClick={() => setActiveSection('general')}
@@ -299,7 +328,18 @@ export function AdminControlModal({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  إدارة المقتطفات المنشورة
+                  المقتطفات المنشورة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('stats')}
+                  className={`rounded-md px-3 py-2 text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    activeSection === 'stats'
+                      ? 'bg-slate-800 text-emerald-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  عداد الإحصائيات العام
                 </button>
                 <button
                   type="button"
@@ -839,6 +879,95 @@ export function AdminControlModal({
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* SECTION 2.5: GLOBAL PUBLIC STATISTICS MANAGEMENT */}
+              {activeSection === 'stats' && (
+                <form
+                  onSubmit={handleSavePublicStats}
+                  className="rounded-xl border border-slate-800 bg-[#0E131A] p-5 space-y-5"
+                >
+                  <div>
+                    <h4 className="text-sm sm:text-base font-bold text-slate-100 mb-1">
+                      إدارة ومراجعة عداد الإحصائيات العام (صدقة جارية)
+                    </h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      يزداد هذا العداد تلقائياً بمقدار (+1) مع كل عملية إنشاء أو تصدير أو مشاركة مقطع قرآني من قِبل الزوار، ويمكنك بصفتك المسؤول الوحيد مراجعة الأرقام الحية أو معايرتها.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                        المقاطع المُصدَّرة والمحمّلة
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000000000}
+                        value={statsForm.exportedVideosCount}
+                        onChange={(e) =>
+                          setStatsForm((prev) => ({
+                            ...prev,
+                            exportedVideosCount: Math.max(0, Number(e.target.value) || 0),
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-3.5 py-2.5 text-sm font-mono tabular-nums text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                        التلاوات والمقاطع المُنشأة بالاستوديو
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000000000}
+                        value={statsForm.createdReelsCount}
+                        onChange={(e) =>
+                          setStatsForm((prev) => ({
+                            ...prev,
+                            createdReelsCount: Math.max(0, Number(e.target.value) || 0),
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-3.5 py-2.5 text-sm font-mono tabular-nums text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-slate-300 mb-1.5">
+                        مشاركات وإهداءات الصدقة الجارية
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1000000000}
+                        value={statsForm.sharedSadaqahCount}
+                        onChange={(e) =>
+                          setStatsForm((prev) => ({
+                            ...prev,
+                            sharedSadaqahCount: Math.max(0, Number(e.target.value) || 0),
+                          }))
+                        }
+                        className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-3.5 py-2.5 text-sm font-mono tabular-nums text-slate-100 focus:border-emerald-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isSavingStats}
+                    className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-300 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingStats ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Save className="w-4 h-4" />
+                    )}
+                    <span>حفظ قيم عداد الإحصائيات العام</span>
+                  </button>
+                </form>
               )}
 
               {/* SECTION 3: EXCLUSIVE PERMISSIONS REGISTRY */}

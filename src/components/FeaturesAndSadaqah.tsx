@@ -7,12 +7,14 @@ import {
   PlayCircle,
   ShieldCheck,
 } from 'lucide-react';
-import { MASTER_ADMIN_EMAIL } from '../firebase';
+import { MASTER_ADMIN_EMAIL, PublicStatsData } from '../firebase';
 import { QuickPreset } from '../types/quran';
 
 interface FeaturesAndSadaqahProps {
   siteTitle: string;
   sadaqahLabel: string;
+  publicStats: PublicStatsData;
+  isStatsLoaded: boolean;
   presets: QuickPreset[];
   allowCustomSadaqah: boolean;
   isMasterAdmin: boolean;
@@ -23,6 +25,8 @@ interface FeaturesAndSadaqahProps {
     preset: QuickPreset
   ) => Promise<boolean>;
 }
+
+const sadaqahNumberFormatter = new Intl.NumberFormat('en-US');
 
 const FAQ_ITEMS = [
   {
@@ -50,6 +54,8 @@ const FAQ_ITEMS = [
 export function FeaturesAndSadaqah({
   siteTitle,
   sadaqahLabel,
+  publicStats,
+  isStatsLoaded,
   presets,
   allowCustomSadaqah,
   isMasterAdmin,
@@ -170,6 +176,29 @@ export function FeaturesAndSadaqah({
                 <p className="text-sm sm:text-base text-slate-400 leading-relaxed">
                   قال رسول الله ﷺ: «إذا مات الإنسان انقطع عنه عمله إلا من ثلاثة: إلا من صدقة جارية، أو علم ينتفع به، أو ولد صالح يدعو له». اختر الآيات، ثم افتحها في الاستوديو لتحميلها كفيديو أو انسخ رابطها المباشر لمشاركتها فوراً.
                 </p>
+
+                <div className="pt-4 border-t border-slate-800/80 flex flex-wrap items-baseline justify-between gap-4 text-xs text-slate-400">
+                  <div>
+                    <span className="text-slate-300 font-medium">مساهمات الزوار حتى الآن: </span>
+                    <span className="font-mono tabular-nums font-bold text-emerald-400 text-sm">
+                      {isStatsLoaded
+                        ? sadaqahNumberFormatter.format(
+                            publicStats.createdReelsCount + publicStats.exportedVideosCount
+                          )
+                        : '—'}
+                    </span>{' '}
+                    <span>مقطعاً مُنشأً ومُصدَّراً</span>
+                    <span className="mx-2" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="font-mono tabular-nums font-bold text-amber-300 text-sm">
+                      {isStatsLoaded
+                        ? sadaqahNumberFormatter.format(publicStats.sharedSadaqahCount)
+                        : '—'}
+                    </span>{' '}
+                    <span>إهداء صدقة جارية</span>
+                  </div>
+                </div>
               </div>
 
               <div className="lg:col-span-6 space-y-4">

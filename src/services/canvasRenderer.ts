@@ -272,6 +272,8 @@ export function renderReelFrame(params: {
   reelData: PreparedReelData | null;
   visuals: LoadedVisualAssets;
   isIdlePreview?: boolean;
+  isReadingMode?: boolean;
+  readingFontBoost?: number;
 }) {
   const {
     ctx,
@@ -282,6 +284,8 @@ export function renderReelFrame(params: {
     reelData,
     visuals,
     isIdlePreview = false,
+    isReadingMode = false,
+    readingFontBoost = 1.35,
   } = params;
   const baseUnit = Math.min(w, h) / 720;
 
@@ -336,8 +340,11 @@ export function renderReelFrame(params: {
     );
   }
 
-  // 2. Contrast Scrim & Soft Radial Vignette
-  ctx.fillStyle = `rgba(6, 10, 16, ${settings.dimming.toFixed(3)})`;
+  // 2. Contrast Scrim & Soft Radial Vignette (slightly calmer, deeper contrast in Reading Mode)
+  const effectiveDimming = isReadingMode
+    ? Math.max(settings.dimming, 0.65)
+    : settings.dimming;
+  ctx.fillStyle = `rgba(6, 10, 16, ${effectiveDimming.toFixed(3)})`;
   ctx.fillRect(0, 0, w, h);
 
   const vignette = ctx.createRadialGradient(
@@ -367,7 +374,7 @@ export function renderReelFrame(params: {
 
   // 4. Top Surah Title Header
   if (settings.showSurahHeader) {
-    const headerY = h * 0.125;
+    const headerY = isReadingMode ? h * 0.095 : h * 0.125;
     ctx.save();
     ctx.direction = 'rtl';
     ctx.textAlign = 'center';
@@ -399,28 +406,72 @@ export function renderReelFrame(params: {
   if (activeChunk) {
     ctx.save();
 
-    const maxTextWidth = w * 0.85;
+    const maxTextWidth = isReadingMode ? w * 0.89 : w * 0.85;
     const wordCount = activeChunk.words.length;
     const autoSizeFactor =
       wordCount > 24 ? 0.72 : wordCount > 16 ? 0.84 : wordCount > 10 ? 0.94 : 1.06;
-    const arabicPx = Math.round(44 * baseUnit * autoSizeFactor * settings.arabicFontSize);
-    const arabicLineHeight = arabicPx * 1.88;
+    const effectiveFontMultiplier =
+      settings.arabicFontSize * (isReadingMode ? readingFontBoost : 1);
 
+    const transPx = Math.round(
+      21 * baseUnit * settings.translationFontSize * (isReadingMode ? 1.12 : 1)
+    );
+    const transLineHeight = transPx * 1.52;
+    const hasTranslation = Boolean(
+      translationMeta.quranComTranslationId && activeChunk.translationText
+    );
+
+    let fullTransLines: string[] = [];
+    if (hasTranslation) {
+      ctx.save();
+      ctx.font = `500 ${transPx}px "IBM Plex Sans Arabic", system-ui, sans-serif`;
+      fullTransLines = wrapPlainTextLines(
+        ctx,
+        activeChunk.translationText,
+        isReadingMode ? w * 0.86 : w * 0.82
+      );
+      ctx.restore();
+    }
+
+    const transBlockH =
+      fullTransLines.length > 0
+        ? 24 * baseUnit + fullTransLines.length * transLineHeight
+        : 0;
+
+    let arabicPx = Math.round(44 * baseUnit * autoSizeFactor * effectiveFontMultiplier);
+    let arabicLineHeight = arabicPx * (isReadingMode ? 1.78 : 1.88);
     ctx.font = `400 ${arabicPx}px ${fontChoice.fontFamily}`;
     ctx.direction = 'rtl';
     ctx.textBaseline = 'middle';
 
-    const wordLines = layoutArabicWordLines(ctx, activeChunk.words, maxTextWidth);
+    let wordLines = layoutArabicWordLines(ctx, activeChunk.words, maxTextWidth);
 
-    // Prepare translation text (revealed progressively in Progressive mode!)
+    // Safe vertical fit guard so enlarged Reading Mode text never collides with header or footer
+    const maxSafeCenterH = h * (isReadingMode ? 0.73 : 0.66);
+    let fitPass = 0;
+    while (
+      wordLines.length * arabicLineHeight + transBlockH > maxSafeCenterH &&
+      arabicPx > Math.round(25 * baseUnit) &&
+      fitPass < 5
+    ) {
+      arabicPx = Math.max(Math.round(25 * baseUnit), Math.floor(arabicPx * 0.9));
+      arabicLineHeight = arabicPx * (isReadingMode ? 1.76 : 1.88);
+      ctx.font = `400 ${arabicPx}px ${fontChoice.fontFamily}`;
+      wordLines = layoutArabicWordLines(ctx, activeChunk.words, maxTextWidth);
+      fitPass++;
+    }
+
+    // Prepare translation text (revealed progressively in Progressive mode outside Reading Mode)
     let transLines: string[] = [];
-    const transPx = Math.round(21 * baseUnit * settings.translationFontSize);
-    const transLineHeight = transPx * 1.52;
 
-    if (translationMeta.quranComTranslationId && activeChunk.translationText) {
+    if (hasTranslation) {
       let visibleTranslation = activeChunk.translationText;
 
-      if (settings.wordRevealMode === WordRevealMode.Progressive && !isIdlePreview) {
+      if (
+        settings.wordRevealMode === WordRevealMode.Progressive &&
+        !isIdlePreview &&
+        !isReadingMode
+      ) {
         const spokenWordsOnly = activeChunk.words.filter((wd) => !wd.isEndMarker);
         const revealedSpokenCount = spokenWordsOnly.filter(
           (wd) => timeSec >= wd.startSec - 0.05
@@ -441,21 +492,14 @@ export function renderReelFrame(params: {
       if (visibleTranslation) {
         ctx.save();
         ctx.font = `500 ${transPx}px "IBM Plex Sans Arabic", system-ui, sans-serif`;
-        // Always compute vertical block height from full translation so vertical centering never jumps!
-        const fullTransLines = wrapPlainTextLines(
+        transLines = wrapPlainTextLines(
           ctx,
-          activeChunk.translationText,
-          w * 0.82
+          visibleTranslation,
+          isReadingMode ? w * 0.86 : w * 0.82
         );
-        transLines = wrapPlainTextLines(ctx, visibleTranslation, w * 0.82);
-        // Pad array height reference via fullTransLines length below
         ctx.restore();
 
         const arabicBlockH = wordLines.length * arabicLineHeight;
-        const transBlockH =
-          fullTransLines.length > 0
-            ? 24 * baseUnit + fullTransLines.length * transLineHeight
-            : 0;
         const totalCenterH = arabicBlockH + transBlockH;
         const startY = h * 0.5 - totalCenterH * 0.5 + arabicLineHeight * 0.5;
 
@@ -471,6 +515,7 @@ export function renderReelFrame(params: {
           settings,
           baseUnit,
           isIdlePreview,
+          isReadingMode,
         });
 
         const transStartY = startY + arabicBlockH - arabicLineHeight * 0.5 + 32 * baseUnit;
@@ -487,21 +532,7 @@ export function renderReelFrame(params: {
         });
         ctx.restore();
       } else {
-        // Reserve full translation height so Arabic lines stay steadily centered as translation starts
-        ctx.save();
-        ctx.font = `500 ${transPx}px "IBM Plex Sans Arabic", system-ui, sans-serif`;
-        const fullTransLines = wrapPlainTextLines(
-          ctx,
-          activeChunk.translationText,
-          w * 0.82
-        );
-        ctx.restore();
-
         const arabicBlockH = wordLines.length * arabicLineHeight;
-        const transBlockH =
-          fullTransLines.length > 0
-            ? 24 * baseUnit + fullTransLines.length * transLineHeight
-            : 0;
         const totalCenterH = arabicBlockH + transBlockH;
         const startY = h * 0.5 - totalCenterH * 0.5 + arabicLineHeight * 0.5;
 
@@ -517,6 +548,7 @@ export function renderReelFrame(params: {
           settings,
           baseUnit,
           isIdlePreview,
+          isReadingMode,
         });
       }
     } else {
@@ -535,6 +567,7 @@ export function renderReelFrame(params: {
         settings,
         baseUnit,
         isIdlePreview,
+        isReadingMode,
       });
     }
 
@@ -542,7 +575,7 @@ export function renderReelFrame(params: {
   }
 
   // 6. Bottom Reciter Attribution & Sadaqah Jariyah Dedication
-  const footerBaseY = h * 0.885;
+  const footerBaseY = isReadingMode ? h * 0.905 : h * 0.885;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.direction = 'rtl';
@@ -599,6 +632,7 @@ function drawArabicWordLines(params: {
   settings: StudioSettings;
   baseUnit: number;
   isIdlePreview: boolean;
+  isReadingMode?: boolean;
 }) {
   const {
     ctx,
@@ -612,6 +646,7 @@ function drawArabicWordLines(params: {
     settings,
     baseUnit,
     isIdlePreview,
+    isReadingMode = false,
   } = params;
 
   ctx.save();
@@ -622,7 +657,7 @@ function drawArabicWordLines(params: {
   wordLines.forEach((lineWords, lineIdx) => {
     const baseLineY = startY + lineIdx * arabicLineHeight;
 
-    if (settings.wordRevealMode === WordRevealMode.StaticFull) {
+    if (settings.wordRevealMode === WordRevealMode.StaticFull && !isReadingMode) {
       ctx.save();
       ctx.textAlign = 'center';
       ctx.direction = 'rtl';
@@ -652,7 +687,11 @@ function drawArabicWordLines(params: {
       const isActivelyPronounced =
         timeSec >= onsetSec && timeSec <= lw.endSec + 0.1;
 
-      if (settings.wordRevealMode === WordRevealMode.Progressive && !isIdlePreview) {
+      if (
+        settings.wordRevealMode === WordRevealMode.Progressive &&
+        !isIdlePreview &&
+        !isReadingMode
+      ) {
         // Hide unspoken future words completely until the reciter pronounces them
         if (!isSpokenOrCurrent) {
           return;
@@ -681,10 +720,10 @@ function drawArabicWordLines(params: {
         ctx.fillText(lw.text, wordX, baseLineY + slideOffsetY);
         ctx.restore();
       } else {
-        // HighlightFull mode (or paused poster preview at 00:00 before Play is pressed)
+        // HighlightFull mode, Reading Mode (full verse visible for calm reading along), or paused poster preview
         ctx.save();
         if (lw.isEndMarker) {
-          ctx.globalAlpha = isIdlePreview ? 0.9 : isSpokenOrCurrent ? 1 : 0.4;
+          ctx.globalAlpha = isIdlePreview ? 0.9 : isSpokenOrCurrent ? 1 : isReadingMode ? 0.65 : 0.4;
           ctx.fillStyle = '#F3CF7A';
           ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
           ctx.shadowBlur = 9 * baseUnit;
@@ -704,7 +743,7 @@ function drawArabicWordLines(params: {
           ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
           ctx.shadowBlur = 10 * baseUnit;
         } else {
-          ctx.globalAlpha = isIdlePreview ? 0.85 : 0.38;
+          ctx.globalAlpha = isIdlePreview ? 0.85 : isReadingMode ? 0.58 : 0.38;
           ctx.fillStyle = settings.textColor;
           ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
           ctx.shadowBlur = 9 * baseUnit;

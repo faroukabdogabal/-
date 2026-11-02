@@ -1,9 +1,11 @@
 import { ArrowDown, Sparkles } from 'lucide-react';
-import { SiteConfigData } from '../firebase';
+import { PublicStatsData, SiteConfigData } from '../firebase';
 import { QuickPreset } from '../types/quran';
 
 interface HeroSectionProps {
   siteConfig: SiteConfigData;
+  publicStats: PublicStatsData;
+  isStatsLoaded: boolean;
   presets: QuickPreset[];
   activePresetId: string | null;
   sharedDedicationBanner: string | null;
@@ -11,14 +13,21 @@ interface HeroSectionProps {
   onScrollToStudio: () => void;
 }
 
+const numberFormatter = new Intl.NumberFormat('en-US');
+
 export function HeroSection({
   siteConfig,
+  publicStats,
+  isStatsLoaded,
   presets,
   activePresetId,
   sharedDedicationBanner,
   onSelectPreset,
   onScrollToStudio,
 }: HeroSectionProps) {
+  const totalGeneratedAndExported =
+    publicStats.createdReelsCount + publicStats.exportedVideosCount;
+
   return (
     <section className="relative border-b border-slate-800/70 bg-[#0B0F14] pt-10 pb-12 sm:pt-14 sm:pb-16">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6">
@@ -75,6 +84,67 @@ export function HeroSection({
               إهداء مقطع كصدقة جارية
             </a>
           </div>
+        </div>
+
+        {/* Live Global Sadaqah Jariyah Impact Counter — clean hairline architecture, zero pills, zero pulsing dots */}
+        <div
+          aria-label="عداد إحصائيات المقاطع القرآنية العام"
+          className="mx-auto max-w-4xl mb-10 border-y border-slate-800/80 py-5"
+        >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 px-1">
+            <span className="font-semibold text-slate-200">
+              إحصائيات الأثر العام للمنصة — مساهمات الزوار في نشر القرآن الكريم
+            </span>
+            <span className="text-slate-400">
+              تحديث فوري مباشر مع كل مقطع يُنشأ أو يُصدَّر
+            </span>
+          </div>
+
+          <dl className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x sm:divide-x-reverse divide-slate-800/80">
+            <div className="py-3 sm:py-1 sm:pl-6 text-center sm:text-right">
+              <dd className="font-mono tabular-nums text-2xl sm:text-3xl font-bold text-emerald-400 tracking-tight">
+                {isStatsLoaded ? numberFormatter.format(totalGeneratedAndExported) : '—'}
+              </dd>
+              <dt className="mt-1 text-xs sm:text-sm font-semibold text-slate-100">
+                إجمالي المقاطع المُنشأة والمُصدَّرة
+              </dt>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                مقاطع وتلاوات قرآنية أُعدّت عبر الاستوديو
+              </p>
+            </div>
+
+            <div className="py-3 sm:py-1 sm:px-6 text-center sm:text-right">
+              <dd className="font-mono tabular-nums text-2xl sm:text-3xl font-bold text-slate-50 tracking-tight">
+                {isStatsLoaded
+                  ? numberFormatter.format(publicStats.exportedVideosCount)
+                  : '—'}
+              </dd>
+              <dt className="mt-1 text-xs sm:text-sm font-semibold text-slate-100">
+                عمليات تصدير وتحميل المقاطع
+              </dt>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                فيديوهات MP4 وبطاقات وتلاوات محمّلة
+              </p>
+            </div>
+
+            <div className="py-3 sm:py-1 sm:pr-6 text-center sm:text-right">
+              <dd className="font-mono tabular-nums text-2xl sm:text-3xl font-bold text-amber-300 tracking-tight">
+                {isStatsLoaded
+                  ? numberFormatter.format(publicStats.sharedSadaqahCount)
+                  : '—'}
+              </dd>
+              <dt className="mt-1 text-xs sm:text-sm font-semibold text-slate-100">
+                مشاركات وإهداءات الصدقة الجارية
+              </dt>
+              <p className="mt-0.5 text-[11px] text-slate-400">
+                روابط ومشاركات مباشرة عبر منصات التواصل
+              </p>
+            </div>
+          </dl>
+
+          <p className="mt-4 text-center text-xs text-slate-400">
+            كل مقطع قرآني تصنعه أو تحمّله يُضاف تلقائياً إلى هذا الأثر المشترك — ساهم الآن بمقطع جديد ليكون صدقة جارية ممتدة الأجر.
+          </p>
         </div>
 
         {/* Quick-load curated Quranic passages */}

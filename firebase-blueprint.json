@@ -234,6 +234,42 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "PublicStats": {
+      "title": "PublicStats",
+      "description": "Global real-time public statistics tracking Quranic reels created, exported, and shared as Sadaqah Jariyah.",
+      "type": "object",
+      "properties": {
+        "exportedVideosCount": {
+          "type": "integer",
+          "description": "Total number of Quranic reels and recitations exported by visitors."
+        },
+        "createdReelsCount": {
+          "type": "integer",
+          "description": "Total number of Quranic reels prepared and customized in the studio."
+        },
+        "sharedSadaqahCount": {
+          "type": "integer",
+          "description": "Total number of Sadaqah Jariyah dedications and social shares triggered."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Immutable server timestamp of initial counter creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest atomic increment or admin update."
+        }
+      },
+      "required": [
+        "exportedVideosCount",
+        "createdReelsCount",
+        "sharedSadaqahCount",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -248,6 +284,10 @@
     "/admins/{adminUid}": {
       "schema": { "$ref": "#/entities/AdminProfile" },
       "description": "Private administrator identity and authority record isolated from public reads and accessible exclusively by farouk.gabal@gmail.com."
+    },
+    "/public_stats/{statsId}": {
+      "schema": { "$ref": "#/entities/PublicStats" },
+      "description": "Singleton global statistics counter (/public_stats/global) publicly readable via get and atomically incrementable by +1 per action (or managed by farouk.gabal@gmail.com)."
     }
   }
 }

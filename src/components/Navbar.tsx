@@ -1,3 +1,5 @@
+import { PWAInstallButton } from './PWAInstallButton';
+
 interface NavbarProps {
   siteTitle: string;
   sadaqahLabel: string;
@@ -66,8 +68,8 @@ export function Navbar({
           </button>
         </nav>
 
-        {/* Zone 3: Max 1 primary CTA + 1 quiet mobile secondary link */}
-        <div className="flex items-center gap-3 shrink-0">
+        {/* Zone 3: Install App + Primary CTA */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <button
             type="button"
             onClick={onOpenAdmin}
@@ -75,10 +77,11 @@ export function Navbar({
           >
             المسؤول
           </button>
+          <PWAInstallButton />
           <button
             type="button"
             onClick={onStartStudio}
-            className="px-4 py-2 text-xs sm:text-sm font-semibold text-slate-950 bg-emerald-400 rounded-lg hover:bg-emerald-300 transition-colors cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+            className="px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-slate-950 bg-emerald-400 rounded-lg hover:bg-emerald-300 transition-colors cursor-pointer whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
           >
             اصنع مقطعك الآن
           </button>

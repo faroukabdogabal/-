@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  BookOpen,
   Check,
   Copy,
   Download,
@@ -7,6 +8,7 @@ import {
   Film,
   ImagePlus,
   Loader2,
+  Minimize2,
   Pause,
   Play,
   RefreshCw,
@@ -18,6 +20,8 @@ import {
   Volume2,
   VolumeX,
   X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import {
   BACKGROUNDS,
@@ -38,7 +42,13 @@ import {
   exportQuranPosterPng,
   exportQuranReelVideo,
 } from '../services/videoExporter';
+import {
+  CompletedExportToastData,
+  ExportSuccessToast,
+} from './ExportSuccessToast';
+import { QuickExportShareFab } from './QuickExportShareFab';
 import { SocialShareDock } from './SocialShareDock';
+import { PublicStatsData } from '../firebase';
 import {
   ExportProgressState,
   ExportResolution,
@@ -65,7 +75,14 @@ interface StudioWorkspaceProps {
   allowCustomSadaqah: boolean;
   officialSadaqahLabel: string;
   isMasterAdmin: boolean;
+  publicStats: PublicStatsData;
+  isStatsLoaded: boolean;
+  onRecordReelCreated: () => void;
+  onRecordReelExported: () => void;
+  onRecordSadaqahShared: () => void;
 }
+
+const studioNumberFormatter = new Intl.NumberFormat('en-US');
 
 function formatSeconds(sec: number): string {
   if (!Number.isFinite(sec) || sec < 0) return '00:00';
@@ -87,6 +104,11 @@ export function StudioWorkspace({
   allowCustomSadaqah,
   officialSadaqahLabel,
   isMasterAdmin,
+  publicStats,
+  isStatsLoaded,
+  onRecordReelCreated,
+  onRecordReelExported,
+  onRecordSadaqahShared,
 }: StudioWorkspaceProps) {
   const [activeTab, setActiveTab] = useState<StudioTab>('quran');
   const [surahQuery, setSurahQuery] = useState('');
@@ -122,6 +144,7 @@ export function StudioWorkspace({
       toAyah: draftToAyah,
       reciterId: draftReciterId,
     });
+    onRecordReelCreated();
   };
 
   // Playback state & Web Audio Engine
@@ -163,6 +186,31 @@ export function StudioWorkspace({
   const [lastExportedVideo, setLastExportedVideo] =
     useState<ExportedVideoFile | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [completedExportToast, setCompletedExportToast] =
+    useState<CompletedExportToastData | null>(null);
+
+  // Distraction-free Reading Mode state & live refs for 60fps canvas loop
+  const [isReadingMode, setIsReadingMode] = useState(false);
+  const [readingFontBoost, setReadingFontBoost] = useState(1.35);
+
+  const isReadingModeRef = useRef(isReadingMode);
+  isReadingModeRef.current = isReadingMode;
+
+  const readingFontBoostRef = useRef(readingFontBoost);
+  readingFontBoostRef.current = readingFontBoost;
+
+  // Allow exiting Reading Mode cleanly via Escape key
+  useEffect(() => {
+    if (!isReadingMode) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsReadingMode(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isReadingMode]);
 
   // Invalidate cached video file if verses or visual settings change
   useEffect(() => {
@@ -416,6 +464,8 @@ export function StudioWorkspace({
               customVideo: customVideoRef.current,
             },
             isIdlePreview: isIdlePoster,
+            isReadingMode: isReadingModeRef.current,
+            readingFontBoost: readingFontBoostRef.current,
           });
         }
       }
@@ -489,6 +539,21 @@ export function StudioWorkspace({
         autoDownload,
       });
       setLastExportedVideo(exported);
+      onRecordReelExported();
+      if (autoDownload) {
+        setIsFabOpen(false);
+        setCompletedExportToast({
+          id: Date.now(),
+          kind: 'video',
+          titleArabic: 'تم تصدير الفيديو القرآني بنجاح',
+          blob: exported.blob,
+          filename: exported.filename,
+          mimeType: exported.mimeType,
+          surahNameArabic: reelData.surah.nameArabic,
+          fromAyah: reelData.fromAyah,
+          toAyah: reelData.toAyah,
+        });
+      }
       return exported;
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
@@ -509,6 +574,40 @@ export function StudioWorkspace({
 
   const handleExportVideo = async () => {
     await runVideoExport(true);
+  };
+
+  const handleExportAudioFile = () => {
+    if (!reelData) return;
+    const exportedWav = exportAudioWav(reelData);
+    onRecordReelExported();
+    setIsFabOpen(false);
+    setCompletedExportToast({
+      id: Date.now(),
+      kind: 'audio',
+      titleArabic: 'تم تصدير التلاوة الصوتية (WAV) بنجاح',
+      blob: exportedWav.blob,
+      filename: exportedWav.filename,
+      mimeType: exportedWav.mimeType,
+      surahNameArabic: reelData.surah.nameArabic,
+      fromAyah: reelData.fromAyah,
+      toAyah: reelData.toAyah,
+    });
+  };
+
+  const handlePosterSavedToast = (poster: ExportedPosterImage) => {
+    if (!reelData) return;
+    setIsFabOpen(false);
+    setCompletedExportToast({
+      id: Date.now(),
+      kind: 'image',
+      titleArabic: 'تم تصدير بطاقة الآية المصورة (PNG) بنجاح',
+      blob: poster.blob,
+      filename: poster.filename,
+      mimeType: poster.mimeType,
+      surahNameArabic: reelData.surah.nameArabic,
+      fromAyah: reelData.fromAyah,
+      toAyah: reelData.toAyah,
+    });
   };
 
   const handlePrepareVideoForShare = async () => {
@@ -546,8 +645,12 @@ export function StudioWorkspace({
   };
 
   const previewDims = useMemo(
-    () => getTargetDimensions(settings.aspectRatio, ExportResolution.HD720),
-    [settings.aspectRatio]
+    () =>
+      getTargetDimensions(
+        isReadingMode ? VideoAspectRatio.Landscape16x9 : settings.aspectRatio,
+        ExportResolution.HD720
+      ),
+    [isReadingMode, settings.aspectRatio]
   );
 
   const isExporting =
@@ -558,35 +661,103 @@ export function StudioWorkspace({
   return (
     <section id="studio" className="py-10 sm:py-14 bg-[#0B0F14]">
       <div className="mx-auto max-w-[1320px] px-4 sm:px-6">
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-end justify-between gap-4 border-b border-slate-800/80 pb-5">
+        {/* Studio Header & Toolbar (with Reading Mode Toggle & Font Magnification Controls) */}
+        <div className="mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-5">
           <div>
             <h2 className="text-2xl sm:text-3xl font-bold text-slate-50 mb-1.5">
-              استوديو صناعة المقاطع القرآنية
+              {isReadingMode
+                ? 'وضع القراءة والتدبر — استوديو القرآن الكريم'
+                : 'استوديو صناعة المقاطع القرآنية'}
             </h2>
             <p className="text-sm text-slate-400">
-              ظهور متزامن للكلمات كتابةً مع نطق القارئ وتصدير سريع بصيغة MP4 بجودة 720p HD
+              {isReadingMode
+                ? 'تم إخفاء أدوات التخصيص الجانبية وتكبير الخط القرآني للتركيز الكامل مع التلاوة المتزامنة'
+                : 'ظهور متزامن للكلمات كتابةً مع نطق القارئ وتصدير سريع بصيغة MP4 بجودة 720p HD'}
             </p>
           </div>
-          {reelData && (
-            <div className="text-xs text-slate-400 tabular-nums">
-              <span>سورة {reelData.surah.nameArabic}</span>
-              <span className="mx-2" aria-hidden="true">
-                ·
-              </span>
-              <span>
-                الآيات {reelData.fromAyah}–{reelData.toAyah}
-              </span>
-              <span className="mx-2" aria-hidden="true">
-                ·
-              </span>
-              <span>المدة {formatSeconds(reelData.totalDurationSec)}</span>
-            </div>
-          )}
+
+          <div className="flex flex-wrap items-center gap-3">
+            {reelData && (
+              <div className="text-xs text-slate-400 tabular-nums ml-1">
+                <span>سورة {reelData.surah.nameArabic}</span>
+                <span className="mx-2" aria-hidden="true">
+                  ·
+                </span>
+                <span>
+                  الآيات {reelData.fromAyah}–{reelData.toAyah}
+                </span>
+                <span className="mx-2" aria-hidden="true">
+                  ·
+                </span>
+                <span>المدة {formatSeconds(reelData.totalDurationSec)}</span>
+              </div>
+            )}
+
+            {/* Reading Mode Quranic Font Zoom Controls */}
+            {isReadingMode && (
+              <div
+                role="group"
+                aria-label="حجم خط القرآن في وضع القراءة"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-700/90 bg-[#121820] p-1"
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReadingFontBoost((v) => Math.max(1.15, Number((v - 0.1).toFixed(2))))
+                  }
+                  disabled={readingFontBoost <= 1.15}
+                  aria-label="تصغير خط القرآن"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className="px-2 text-xs font-mono tabular-nums font-semibold text-emerald-300 whitespace-nowrap">
+                  {Math.round(readingFontBoost * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReadingFontBoost((v) => Math.min(1.75, Number((v + 0.1).toFixed(2))))
+                  }
+                  disabled={readingFontBoost >= 1.75}
+                  aria-label="تكبير خط القرآن"
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-300 hover:bg-slate-800 hover:text-white transition-colors cursor-pointer disabled:opacity-40"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Primary Studio Toolbar Toggle Button for Reading Mode */}
+            <button
+              type="button"
+              aria-pressed={isReadingMode}
+              onClick={() => setIsReadingMode((prev) => !prev)}
+              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap shrink-0 ${
+                isReadingMode
+                  ? 'bg-emerald-400 text-slate-950 hover:bg-emerald-300'
+                  : 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 hover:text-emerald-200'
+              }`}
+            >
+              {isReadingMode ? (
+                <>
+                  <Minimize2 className="w-4 h-4 shrink-0" />
+                  <span>إنهاء وضع القراءة</span>
+                </>
+              ) : (
+                <>
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span>وضع القراءة</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Controls Panel */}
-          <div className="lg:col-span-7 rounded-xl border border-slate-800/90 bg-[#121820] overflow-hidden">
+          {/* Controls Panel — Hidden during Reading Mode for complete contemplation focus */}
+          {!isReadingMode && (
+            <div className="lg:col-span-7 rounded-xl border border-slate-800/90 bg-[#121820] overflow-hidden">
             <div
               role="tablist"
               aria-label="أقسام تخصيص المقطع"
@@ -1459,7 +1630,7 @@ export function StudioWorkspace({
                     <button
                       type="button"
                       disabled={!reelData || isLoadingReel}
-                      onClick={() => reelData && exportAudioWav(reelData)}
+                      onClick={handleExportAudioFile}
                       className="flex items-center justify-center gap-2 rounded-lg border border-slate-700 bg-slate-800/80 px-4 py-3 text-xs sm:text-sm font-medium text-slate-100 hover:bg-slate-700 transition-colors cursor-pointer disabled:opacity-50"
                     >
                       <FileAudio className="w-4 h-4 text-amber-300" />
@@ -1507,14 +1678,50 @@ export function StudioWorkspace({
               </div>
             )}
           </div>
+          )}
 
-          {/* Live Video Preview & Export Column */}
-          <div className="lg:col-span-5 lg:sticky lg:top-20 space-y-4">
-            <div className="rounded-xl border border-slate-800/90 bg-[#121820] p-4 sm:p-5">
-              <div className="relative mx-auto flex items-center justify-center rounded-lg bg-[#070A0E] border border-slate-800/80 overflow-hidden p-2">
+          {/* Live Video Preview & Export Column — Expands to full centered sanctuary in Reading Mode */}
+          <div
+            className={
+              isReadingMode
+                ? 'lg:col-span-12 max-w-5xl mx-auto w-full space-y-4'
+                : 'lg:col-span-5 lg:sticky lg:top-20 space-y-4'
+            }
+          >
+            <div
+              className={`rounded-xl border bg-[#121820] ${
+                isReadingMode
+                  ? 'border-emerald-500/30 p-5 sm:p-7'
+                  : 'border-slate-800/90 p-4 sm:p-5'
+              }`}
+            >
+              {isReadingMode && reelData && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-400">
+                  <div>
+                    <span className="font-semibold text-slate-200">
+                      سورة {reelData.surah.nameArabic}
+                    </span>
+                    <span className="mx-2" aria-hidden="true">
+                      ·
+                    </span>
+                    <span>القارئ {reelData.reciter.nameArabic}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsReadingMode(false)}
+                    className="text-slate-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                  >
+                    العودة لأدوات التخصيص والتصدير (Esc)
+                  </button>
+                </div>
+              )}
+
+              <div className="relative mx-auto flex items-center justify-center rounded-lg bg-[#070A0E] border border-slate-800/80 overflow-hidden p-2 sm:p-3">
                 <div
                   className={`relative w-full overflow-hidden rounded-md shadow-lg ${
-                    settings.aspectRatio === VideoAspectRatio.Vertical9x16
+                    isReadingMode
+                      ? 'max-w-4xl aspect-video'
+                      : settings.aspectRatio === VideoAspectRatio.Vertical9x16
                       ? 'max-w-[290px] aspect-[9/16]'
                       : settings.aspectRatio === VideoAspectRatio.Square1x1
                       ? 'max-w-[380px] aspect-square'
@@ -1633,80 +1840,184 @@ export function StudioWorkspace({
                   </button>
                 </div>
 
-                {/* Primary Fast 720p HD Export MP4 Action */}
-                {isExporting ? (
-                  <div className="rounded-lg border border-emerald-500/40 bg-[#0E131A] p-3.5 space-y-2.5">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium text-emerald-300 flex items-center gap-2">
-                        <Film className="w-4 h-4 animate-pulse" />
-                        {exportProgress.message}
+                {/* Verse Quick-Jump Strip inside Reading Mode for effortless contemplation navigation */}
+                {isReadingMode && reelData && reelData.chunks.length > 1 && (
+                  <div className="pt-3 border-t border-slate-800/80">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-slate-400">
+                        الانتقال السريع بين شاشات الآيات أثناء القراءة:
                       </span>
-                      <button
-                        type="button"
-                        onClick={handleCancelExport}
-                        className="inline-flex items-center gap-1 text-slate-400 hover:text-red-300 cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>إلغاء</span>
-                      </button>
+                      <span className="text-xs text-slate-500 tabular-nums">
+                        {reelData.chunks.length} مقاطع متتابعة
+                      </span>
                     </div>
-                    <svg
-                      viewBox="0 0 100 4"
-                      preserveAspectRatio="none"
-                      className="h-2 w-full rounded-full bg-slate-800 overflow-hidden block"
-                      aria-hidden="true"
-                    >
-                      <rect
-                        x={100 - Math.max(3, exportProgress.percent)}
-                        y="0"
-                        width={Math.max(3, exportProgress.percent)}
-                        height="4"
-                        fill="#34d399"
-                      />
-                    </svg>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <button
-                      type="button"
-                      disabled={!reelData || isLoadingReel}
-                      onClick={handleExportVideo}
-                      className="w-full flex items-center justify-center gap-2.5 rounded-lg bg-emerald-400 px-5 py-3.5 text-sm sm:text-base font-bold text-slate-950 hover:bg-emerald-300 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
-                    >
-                      <Download className="w-4 h-4 shrink-0" />
-                      <span>
-                        تصدير وتحميل الفيديو MP4 (سريع 720p HD · بدون علامة مائية)
-                      </span>
-                    </button>
-
-                    {exportProgress.status === 'done' && (
-                      <p className="text-center text-xs text-emerald-400 font-medium">
-                        {exportProgress.message}
-                      </p>
-                    )}
-
-                    {exportProgress.status === 'error' && (
-                      <p className="text-center text-xs text-red-400">
-                        {exportProgress.message}: {exportProgress.errorDetail}
-                      </p>
-                    )}
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {reelData.chunks.map((chunk) => {
+                        const isCurrentChunk =
+                          currentTime >= chunk.startSec && currentTime < chunk.endSec;
+                        return (
+                          <button
+                            key={chunk.id}
+                            type="button"
+                            onClick={() => handleSeek(chunk.startSec + 0.02)}
+                            className={`shrink-0 max-w-[240px] rounded-lg border px-3 py-2 text-right transition-colors cursor-pointer ${
+                              isCurrentChunk
+                                ? 'border-emerald-500/70 bg-emerald-500/10 text-slate-100'
+                                : 'border-slate-800 bg-[#0E131A] text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            <div className="text-[11px] text-emerald-400 font-mono tabular-nums mb-0.5">
+                              {formatSeconds(chunk.startSec)} – {formatSeconds(chunk.endSec)}
+                            </div>
+                            <div className="text-xs truncate">{chunk.arabicText}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
 
-                {/* Social Media Video, Image Card & Verse Text Sharing Dock */}
-                <SocialShareDock
-                  reelData={reelData}
-                  settings={settings}
-                  lastExportedVideo={lastExportedVideo}
-                  isExportingVideo={isExporting}
-                  onPrepareVideoForShare={handlePrepareVideoForShare}
-                  onCapturePosterImage={handleCapturePosterImage}
-                />
+                {/* Primary Fast 720p HD Export MP4 & Social Share — Hidden in Reading Mode for zero distraction */}
+                {!isReadingMode && (
+                  <>
+                    {isExporting ? (
+                      <div className="rounded-lg border border-emerald-500/40 bg-[#0E131A] p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-medium text-emerald-300 flex items-center gap-2">
+                            <Film className="w-4 h-4 animate-pulse" />
+                            {exportProgress.message}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleCancelExport}
+                            className="inline-flex items-center gap-1 text-slate-400 hover:text-red-300 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                            <span>إلغاء</span>
+                          </button>
+                        </div>
+                        <svg
+                          viewBox="0 0 100 4"
+                          preserveAspectRatio="none"
+                          className="h-2 w-full rounded-full bg-slate-800 overflow-hidden block"
+                          aria-hidden="true"
+                        >
+                          <rect
+                            x={100 - Math.max(3, exportProgress.percent)}
+                            y="0"
+                            width={Math.max(3, exportProgress.percent)}
+                            height="4"
+                            fill="#34d399"
+                          />
+                        </svg>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          disabled={!reelData || isLoadingReel}
+                          onClick={handleExportVideo}
+                          className="w-full flex items-center justify-center gap-2.5 rounded-lg bg-emerald-400 px-5 py-3.5 text-sm sm:text-base font-bold text-slate-950 hover:bg-emerald-300 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                        >
+                          <Download className="w-4 h-4 shrink-0" />
+                          <span>
+                            تصدير وتحميل الفيديو MP4 (سريع 720p HD · بدون علامة مائية)
+                          </span>
+                        </button>
+
+                        {exportProgress.status === 'done' && (
+                          <p className="text-center text-xs text-emerald-400 font-medium">
+                            {exportProgress.message}
+                          </p>
+                        )}
+
+                        {exportProgress.status === 'error' && (
+                          <p className="text-center text-xs text-red-400">
+                            {exportProgress.message}: {exportProgress.errorDetail}
+                          </p>
+                        )}
+
+                        <div className="pt-1 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-[11px] text-slate-400 text-center">
+                          <span>تم عبر المنصة حتى الآن تصدير</span>
+                          <span className="font-mono tabular-nums font-semibold text-emerald-400">
+                            {isStatsLoaded
+                              ? studioNumberFormatter.format(publicStats.exportedVideosCount)
+                              : '—'}
+                          </span>
+                          <span>مقطعاً وإنشاء</span>
+                          <span className="font-mono tabular-nums font-semibold text-slate-200">
+                            {isStatsLoaded
+                              ? studioNumberFormatter.format(publicStats.createdReelsCount)
+                              : '—'}
+                          </span>
+                          <span>تلاوة قرآنية كصدقة جارية</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Social Media Video, Image Card & Verse Text Sharing Dock */}
+                    <SocialShareDock
+                      reelData={reelData}
+                      settings={settings}
+                      lastExportedVideo={lastExportedVideo}
+                      isExportingVideo={isExporting}
+                      onPrepareVideoForShare={handlePrepareVideoForShare}
+                      onCapturePosterImage={handleCapturePosterImage}
+                      onRecordSocialShare={onRecordSadaqahShared}
+                      onRecordPosterExport={onRecordReelExported}
+                      onPosterSaved={handlePosterSavedToast}
+                    />
+                  </>
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Global Bottom Floating Action Button (FAB) for instant Export & Share */}
+      <QuickExportShareFab
+        isOpen={isFabOpen}
+        onOpenChange={setIsFabOpen}
+        reelData={reelData}
+        settings={settings}
+        isLoadingReel={isLoadingReel}
+        isReadingMode={isReadingMode}
+        hasUnappliedAudioChanges={hasUnappliedAudioChanges}
+        onApplyAudioSelection={applyAudioSelection}
+        exportProgress={exportProgress}
+        isExporting={isExporting}
+        lastExportedVideo={lastExportedVideo}
+        onExportVideo={handleExportVideo}
+        onCancelExport={handleCancelExport}
+        onPrepareVideoForShare={handlePrepareVideoForShare}
+        onCapturePosterImage={handleCapturePosterImage}
+        onPosterExported={handlePosterSavedToast}
+        onExportAudioWav={handleExportAudioFile}
+        onCopyShareLink={onCopyShareLink}
+        onJumpToSadaqahSettings={() => {
+          setIsReadingMode(false);
+          setActiveTab('sadaqah');
+          document.getElementById('studio')?.scrollIntoView({ behavior: 'smooth' });
+        }}
+        onRecordReelExported={onRecordReelExported}
+        onRecordSadaqahShared={onRecordSadaqahShared}
+      />
+
+      {/* Post-Export Confirmation Toast with Direct Download & Social Platforms Sharing */}
+      <ExportSuccessToast
+        toastItem={completedExportToast}
+        onDismiss={() => setCompletedExportToast(null)}
+        reelData={reelData}
+        settings={settings}
+        lastExportedVideo={lastExportedVideo}
+        isExportingVideo={isExporting}
+        onPrepareVideoForShare={handlePrepareVideoForShare}
+        onCapturePosterImage={handleCapturePosterImage}
+        onCopyShareLink={onCopyShareLink}
+        onRecordSocialShare={onRecordSadaqahShared}
+        onRecordPosterExport={onRecordReelExported}
+      />
     </section>
   );
 }

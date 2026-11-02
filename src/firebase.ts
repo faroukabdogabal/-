@@ -13,6 +13,7 @@ import {
   getDoc,
   getDocFromServer,
   getFirestore,
+  increment,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -142,6 +143,23 @@ export interface ManagedPresetRecord {
   backgroundId: string;
   status: 'published' | 'draft';
 }
+
+export interface PublicStatsData {
+  exportedVideosCount: number;
+  createdReelsCount: number;
+  sharedSadaqahCount: number;
+}
+
+export const DEFAULT_PUBLIC_STATS: PublicStatsData = {
+  exportedVideosCount: 0,
+  createdReelsCount: 0,
+  sharedSadaqahCount: 0,
+};
+
+export type PublicStatMetricKey =
+  | 'exportedVideosCount'
+  | 'createdReelsCount'
+  | 'sharedSadaqahCount';
 
 const SAFE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
@@ -327,3 +345,80 @@ export async function deleteManagedPresetAsAdmin(
     handleFirestoreError(error, OperationType.DELETE, path);
   }
 }
+
+export async function incrementPublicStatCounter(
+  metric: PublicStatMetricKey
+): Promise<void> {
+  const statsPath = 'public_stats/global';
+  const statsRef = doc(db, 'public_stats', 'global');
+
+  try {
+    const snap = await getDoc(statsRef);
+    if (!snap.exists()) {
+      try {
+        await setDoc(statsRef, {
+          exportedVideosCount: metric === 'exportedVideosCount' ? 1 : 0,
+          createdReelsCount: metric === 'createdReelsCount' ? 1 : 0,
+          sharedSadaqahCount: metric === 'sharedSadaqahCount' ? 1 : 0,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        return;
+      } catch {
+        // Concurrent initialization fallback: apply atomic +1 update on existing document
+        await updateDoc(statsRef, {
+          [metric]: increment(1),
+          updatedAt: serverTimestamp(),
+        });
+        return;
+      }
+    }
+
+    await updateDoc(statsRef, {
+      [metric]: increment(1),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, statsPath);
+  }
+}
+
+export async function savePublicStatsAsAdmin(
+  user: User,
+  input: PublicStatsData
+): Promise<void> {
+  if (!isVerifiedMasterAdmin(user)) {
+    throw new Error('غير مصرح بتعديل الإحصائيات إلا لحساب المسؤول الوحيد farouk.gabal@gmail.com');
+  }
+
+  const clampCounter = (val: number) =>
+    Math.max(0, Math.min(1000000000, Math.floor(Number.isFinite(val) ? val : 0)));
+
+  const sanitized: PublicStatsData = {
+    exportedVideosCount: clampCounter(input.exportedVideosCount),
+    createdReelsCount: clampCounter(input.createdReelsCount),
+    sharedSadaqahCount: clampCounter(input.sharedSadaqahCount),
+  };
+
+  const statsPath = 'public_stats/global';
+  const statsRef = doc(db, 'public_stats', 'global');
+
+  try {
+    const snap = await getDoc(statsRef);
+    if (!snap.exists()) {
+      await setDoc(statsRef, {
+        ...sanitized,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      await updateDoc(statsRef, {
+        ...sanitized,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, statsPath);
+  }
+}
+

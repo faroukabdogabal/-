@@ -24,6 +24,9 @@ interface SocialShareDockProps {
   isExportingVideo: boolean;
   onPrepareVideoForShare: () => Promise<ExportedVideoFile | null>;
   onCapturePosterImage: () => Promise<ExportedPosterImage | null>;
+  onRecordSocialShare?: () => void;
+  onRecordPosterExport?: () => void;
+  onPosterSaved?: (poster: ExportedPosterImage) => void;
 }
 
 interface SocialPlatformItem {
@@ -293,6 +296,9 @@ export function SocialShareDock({
   isExportingVideo,
   onPrepareVideoForShare,
   onCapturePosterImage,
+  onRecordSocialShare,
+  onRecordPosterExport,
+  onPosterSaved,
 }: SocialShareDockProps) {
   const canNativeShareVideo = useMemo(() => detectNativeVideoShareSupport(), []);
 
@@ -375,6 +381,7 @@ export function SocialShareDock({
       const poster = await onCapturePosterImage();
       if (!poster) {
         await copyTextSafe(sharePayload.fullQuranicText);
+        onRecordSocialShare?.();
         setFeedbackBanner(
           `تم نسخ نص الآيات الكريمة لـ ${platformName} في الحافظة بنجاح.`
         );
@@ -400,6 +407,7 @@ export function SocialShareDock({
               title: sharePayload.title,
               text: sharePayload.fullQuranicText,
             });
+            onRecordSocialShare?.();
             setFeedbackBanner(
               `تم فتح مشاركة صورة البطاقة القرآنية مباشرة لـ ${platformName}.`
             );
@@ -412,6 +420,7 @@ export function SocialShareDock({
 
       // 2. Desktop / iframe fallback: copy PNG image directly to Clipboard — NO empty video window!
       const copiedImg = await copyImageBlobToClipboard(poster.blob);
+      onRecordSocialShare?.();
       if (copiedImg) {
         setFeedbackBanner(
           `تم نسخ بطاقة الآية كصورة عالية الجودة (PNG) لـ ${platformName} — الصقها مباشرة (Ctrl+V) بدون الحاجة لفتح نافذة رفع فيديو.`
@@ -419,6 +428,7 @@ export function SocialShareDock({
       } else {
         await copyTextSafe(sharePayload.fullQuranicText);
         triggerFileDownload(poster.blob, poster.filename);
+        onRecordPosterExport?.();
         setFeedbackBanner(
           `تم حفظ صورة البطاقة القرآنية (PNG) ونسخ نص الآيات لـ ${platformName} جاهزة للنشر الفوري.`
         );
@@ -445,6 +455,7 @@ export function SocialShareDock({
             title: sharePayload.title,
             text: sharePayload.fullQuranicText,
           });
+          onRecordSocialShare?.();
           setFeedbackBanner(
             `تم إرسال ملف الفيديو (MP4) مباشرة إلى ${platform.nameArabic}.`
           );
@@ -476,6 +487,7 @@ export function SocialShareDock({
 
   const handleTextModePlatformClick = async (platform: SocialPlatformItem) => {
     await copyTextSafe(sharePayload.fullQuranicText);
+    onRecordSocialShare?.();
     if (platform.getTextShareHref) {
       setFeedbackBanner(
         `تم تجهيز نص الآيات الكريمة كاملة للمشاركة النصية المباشرة على ${platform.nameArabic}.`
@@ -693,9 +705,15 @@ export function SocialShareDock({
             </button>
             <button
               type="button"
-              onClick={() =>
-                triggerFileDownload(generatedPoster.blob, generatedPoster.filename)
-              }
+              onClick={() => {
+                triggerFileDownload(generatedPoster.blob, generatedPoster.filename);
+                onRecordPosterExport?.();
+                onPosterSaved?.({
+                  blob: generatedPoster.blob,
+                  filename: generatedPoster.filename,
+                  mimeType: 'image/png',
+                });
+              }}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-400 px-2.5 py-1.5 text-[11px] font-bold text-slate-950 hover:bg-emerald-300 cursor-pointer"
             >
               <Download className="w-3 h-3" />
@@ -715,6 +733,7 @@ export function SocialShareDock({
             type="button"
             onClick={() => {
               void copyTextSafe(sharePayload.fullQuranicText).then(() => {
+                onRecordSocialShare?.();
                 setFeedbackBanner(
                   'تم نسخ نص الآيات الكريمة كاملة مع الإهداء في الحافظة.'
                 );

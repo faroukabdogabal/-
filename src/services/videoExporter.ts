@@ -12,7 +12,7 @@ import {
   renderReelFrame,
 } from './canvasRenderer';
 
-function triggerBlobDownload(blob: Blob, filename: string) {
+export function triggerBlobDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -38,7 +38,13 @@ async function ensureCanvasFontsLoaded(fontId: string) {
   }
 }
 
-export function exportAudioWav(reelData: PreparedReelData) {
+export interface ExportedAudioFile {
+  blob: Blob;
+  filename: string;
+  mimeType: 'audio/wav';
+}
+
+export function exportAudioWav(reelData: PreparedReelData): ExportedAudioFile {
   const buffer = reelData.audioBuffer;
   const numChannels = buffer.numberOfChannels;
   const sampleRate = buffer.sampleRate;
@@ -90,6 +96,11 @@ export function exportAudioWav(reelData: PreparedReelData) {
   const blob = new Blob([arrayBuffer], { type: 'audio/wav' });
   const filename = `quran-audio-${reelData.surah.nameSimple}-${reelData.fromAyah}-${reelData.toAyah}.wav`;
   triggerBlobDownload(blob, filename);
+  return {
+    blob,
+    filename,
+    mimeType: 'audio/wav',
+  };
 }
 
 async function canUseWebCodecsMp4(
