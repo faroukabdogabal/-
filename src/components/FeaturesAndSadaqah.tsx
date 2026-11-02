@@ -322,6 +322,9 @@ export function FeaturesAndSadaqah({
               <a href="#studio" className="hover:text-slate-300 transition-colors">
                 الاستوديو
               </a>
+              <a href="#islamic-tools" className="hover:text-slate-300 transition-colors">
+                الأدوات الإسلامية
+              </a>
               <a href="#features" className="hover:text-slate-300 transition-colors">
                 المميزات
               </a>

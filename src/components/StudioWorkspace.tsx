@@ -31,7 +31,14 @@ import {
   LoadedVisualAssets,
   renderReelFrame,
 } from '../services/canvasRenderer';
-import { exportAudioWav, exportQuranReelVideo } from '../services/videoExporter';
+import {
+  exportAudioWav,
+  ExportedPosterImage,
+  ExportedVideoFile,
+  exportQuranPosterPng,
+  exportQuranReelVideo,
+} from '../services/videoExporter';
+import { SocialShareDock } from './SocialShareDock';
 import {
   ExportProgressState,
   ExportResolution,
@@ -153,7 +160,24 @@ export function StudioWorkspace({
     message: '',
   });
   const exportAbortRef = useRef<AbortController | null>(null);
+  const [lastExportedVideo, setLastExportedVideo] =
+    useState<ExportedVideoFile | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Invalidate cached video file if verses or visual settings change
+  useEffect(() => {
+    setLastExportedVideo(null);
+  }, [
+    reelData,
+    settings.aspectRatio,
+    settings.backgroundId,
+    settings.customBgUrl,
+    settings.fontId,
+    settings.arabicFontSize,
+    settings.translationId,
+    settings.wordRevealMode,
+    settings.sadaqahText,
+  ]);
 
   // Load selected photo or custom uploaded image into HTMLImageElement
   useEffect(() => {
@@ -297,6 +321,7 @@ export function StudioWorkspace({
     playStartOffsetRef.current = 0;
     hasInteractedPlayRef.current = false;
     setHasInteractedPlay(false);
+    setLastExportedVideo(null);
   }, [reelData]);
 
   useEffect(() => {
@@ -438,8 +463,10 @@ export function StudioWorkspace({
     e.target.value = '';
   };
 
-  const handleExportVideo = async () => {
-    if (!reelData) return;
+  const runVideoExport = async (
+    autoDownload: boolean
+  ): Promise<ExportedVideoFile | null> => {
+    if (!reelData) return null;
     if (isPlayingRef.current) {
       togglePlayPause();
     }
@@ -453,13 +480,16 @@ export function StudioWorkspace({
     };
 
     try {
-      await exportQuranReelVideo({
+      const exported = await exportQuranReelVideo({
         reelData,
         settings,
         visuals,
         onProgress: setExportProgress,
         signal: controller.signal,
+        autoDownload,
       });
+      setLastExportedVideo(exported);
+      return exported;
     } catch (err) {
       if ((err as Error)?.name === 'AbortError') {
         setExportProgress({ status: 'idle', percent: 0, message: '' });
@@ -471,8 +501,35 @@ export function StudioWorkspace({
           errorDetail: err instanceof Error ? err.message : 'خطأ غير متوقع',
         });
       }
+      return null;
     } finally {
       exportAbortRef.current = null;
+    }
+  };
+
+  const handleExportVideo = async () => {
+    await runVideoExport(true);
+  };
+
+  const handlePrepareVideoForShare = async () => {
+    return runVideoExport(false);
+  };
+
+  const handleCapturePosterImage = async (): Promise<ExportedPosterImage | null> => {
+    if (!reelData) return null;
+    const visuals: LoadedVisualAssets = {
+      bgImage: loadedBgImg,
+      customVideo: customVideoRef.current,
+    };
+    try {
+      return await exportQuranPosterPng({
+        reelData,
+        settings,
+        visuals,
+        timeSec: currentTimeRef.current || 0,
+      });
+    } catch {
+      return null;
     }
   };
 
@@ -1593,17 +1650,20 @@ export function StudioWorkspace({
                         <span>إلغاء</span>
                       </button>
                     </div>
-                    <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-400 transition-transform duration-150 origin-right"
-                        style={{
-                          transform: `scaleX(${Math.max(
-                            0.03,
-                            exportProgress.percent / 100
-                          )})`,
-                        }}
+                    <svg
+                      viewBox="0 0 100 4"
+                      preserveAspectRatio="none"
+                      className="h-2 w-full rounded-full bg-slate-800 overflow-hidden block"
+                      aria-hidden="true"
+                    >
+                      <rect
+                        x={100 - Math.max(3, exportProgress.percent)}
+                        y="0"
+                        width={Math.max(3, exportProgress.percent)}
+                        height="4"
+                        fill="#34d399"
                       />
-                    </div>
+                    </svg>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1632,6 +1692,16 @@ export function StudioWorkspace({
                     )}
                   </div>
                 )}
+
+                {/* Social Media Video, Image Card & Verse Text Sharing Dock */}
+                <SocialShareDock
+                  reelData={reelData}
+                  settings={settings}
+                  lastExportedVideo={lastExportedVideo}
+                  isExportingVideo={isExporting}
+                  onPrepareVideoForShare={handlePrepareVideoForShare}
+                  onCapturePosterImage={handleCapturePosterImage}
+                />
               </div>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { ShieldCheck } from 'lucide-react';
 import { AdminControlModal } from './components/AdminControlModal';
 import { FeaturesAndSadaqah } from './components/FeaturesAndSadaqah';
 import { HeroSection } from './components/HeroSection';
+import { IslamicToolsSection } from './components/IslamicToolsSection';
 import { Navbar } from './components/Navbar';
 import { StudioWorkspace } from './components/StudioWorkspace';
 import {
@@ -427,6 +428,21 @@ export default function App() {
     [scrollToStudio]
   );
 
+  const handleLoadVerseFromTool = useCallback(
+    (surahId: number, fromAyah: number, toAyah: number) => {
+      userModifiedStudioRef.current = true;
+      setActivePresetId(null);
+      setSettings((prev) => ({
+        ...prev,
+        surahId,
+        fromAyah,
+        toAyah: Math.max(fromAyah, Math.min(fromAyah + 29, toAyah)),
+      }));
+      scrollToStudio();
+    },
+    [scrollToStudio]
+  );
+
   const buildShareUrl = useCallback(
     (customOverrides?: Partial<StudioSettings>) => {
       const target = { ...settings, ...customOverrides };
@@ -577,6 +593,12 @@ export default function App() {
           allowCustomSadaqah={siteConfig.allowPublicCustomSadaqah}
           officialSadaqahLabel={siteConfig.sadaqahLabel}
           isMasterAdmin={isMasterAdmin}
+        />
+
+        <IslamicToolsSection
+          surahs={surahs}
+          sadaqahLabel={siteConfig.sadaqahLabel}
+          onLoadVerseIntoStudio={handleLoadVerseFromTool}
         />
 
         <FeaturesAndSadaqah

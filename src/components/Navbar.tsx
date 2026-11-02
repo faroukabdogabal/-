@@ -36,10 +36,10 @@ export function Navbar({
             الاستوديو
           </a>
           <a
-            href="#features"
+            href="#islamic-tools"
             className="hover:text-slate-100 hover:underline underline-offset-8 transition-colors whitespace-nowrap shrink-0"
           >
-            المميزات
+            الأدوات الإسلامية
           </a>
           <a
             href="#sadaqah"

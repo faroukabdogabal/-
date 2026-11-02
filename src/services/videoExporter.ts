@@ -473,14 +473,82 @@ async function exportWithMediaRecorderFallback(params: {
   });
 }
 
+export interface ExportedVideoFile {
+  blob: Blob;
+  filename: string;
+  mimeType: string;
+}
+
+export interface ExportedPosterImage {
+  blob: Blob;
+  filename: string;
+  mimeType: 'image/png';
+}
+
+export async function exportQuranPosterPng(params: {
+  reelData: PreparedReelData;
+  settings: StudioSettings;
+  visuals: LoadedVisualAssets;
+  timeSec?: number;
+}): Promise<ExportedPosterImage> {
+  const { reelData, settings, visuals, timeSec = 0 } = params;
+  await ensureCanvasFontsLoaded(settings.fontId);
+
+  const { width, height } = getTargetDimensions(
+    settings.aspectRatio,
+    ExportResolution.HD720
+  );
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('تعذر إنشاء بطاقة الصورة القرآنية');
+  }
+
+  renderReelFrame({
+    ctx,
+    width,
+    height,
+    timeSec,
+    settings,
+    reelData,
+    visuals,
+    isIdlePreview: true,
+  });
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => {
+      if (b) resolve(b);
+      else reject(new Error('تعذر استخراج ملف الصورة PNG'));
+    }, 'image/png');
+  });
+
+  const filename = `quran-card-720p-${reelData.surah.nameSimple}-${reelData.fromAyah}-${reelData.toAyah}.png`;
+  return {
+    blob,
+    filename,
+    mimeType: 'image/png',
+  };
+}
+
 export async function exportQuranReelVideo(params: {
   reelData: PreparedReelData;
   settings: StudioSettings;
   visuals: LoadedVisualAssets;
   onProgress: (p: ExportProgressState) => void;
   signal?: AbortSignal;
-}): Promise<void> {
-  const { reelData, settings, visuals, onProgress, signal } = params;
+  autoDownload?: boolean;
+}): Promise<ExportedVideoFile> {
+  const {
+    reelData,
+    settings,
+    visuals,
+    onProgress,
+    signal,
+    autoDownload = true,
+  } = params;
   const { width, height } = getTargetDimensions(
     settings.aspectRatio,
     ExportResolution.HD720
@@ -489,7 +557,9 @@ export async function exportQuranReelVideo(params: {
   onProgress({
     status: 'preparing',
     percent: 3,
-    message: 'جاري تجهيز التصدير السريع 720p HD...',
+    message: autoDownload
+      ? 'جاري تجهيز التصدير السريع 720p HD...'
+      : 'جاري تجهيز ملف الفيديو 720p HD للمشاركة المباشرة...',
   });
 
   const webCodecsCodec = await canUseWebCodecsMp4(
@@ -527,11 +597,21 @@ export async function exportQuranReelVideo(params: {
   }
 
   const filename = `quran-reel-720p-${reelData.surah.nameSimple}-${reelData.fromAyah}-${reelData.toAyah}.${extension}`;
-  triggerBlobDownload(finalBlob, filename);
+  if (autoDownload) {
+    triggerBlobDownload(finalBlob, filename);
+  }
 
   onProgress({
     status: 'done',
     percent: 100,
-    message: 'تم تصدير وتنزيل الفيديو السريع (720p HD) بنجاح وبدون علامة مائية',
+    message: autoDownload
+      ? 'تم تصدير وتنزيل الفيديو السريع (720p HD) بنجاح وبدون علامة مائية'
+      : 'تم تجهيز ملف الفيديو (720p HD MP4) وأصبح جاهزاً للمشاركة المباشرة الآن',
   });
+
+  return {
+    blob: finalBlob,
+    filename,
+    mimeType: extension === 'mp4' ? 'video/mp4' : 'video/webm',
+  };
 }
