@@ -1,6 +1,7 @@
 import QRCode from 'qrcode';
 import { BACKGROUNDS, QURAN_FONTS, TRANSLATIONS } from '../data/quranCatalog';
 import {
+  BackgroundAtmosphereEffect,
   ExportResolution,
   ParticleEffect,
   PreparedReelData,
@@ -45,7 +46,14 @@ function getOrCreateQrMatrix(url: string): CachedQrMatrix | null {
   }
 }
 
-export function resolveStudioQrUrl(settings: StudioSettings): string {
+export function resolveStudioQrUrl(
+  settings: StudioSettings,
+  dynamicShareUrl?: string
+): string {
+  if (settings.qrCodeLinkMode !== 'page' && dynamicShareUrl?.trim()) {
+    return dynamicShareUrl.trim();
+  }
+
   if (typeof window === 'undefined') {
     return 'https://quran-reels.app';
   }
@@ -59,6 +67,11 @@ export function resolveStudioQrUrl(settings: StudioSettings): string {
     u.searchParams.set('from', String(settings.fromAyah));
     u.searchParams.set('to', String(settings.toAyah));
     u.searchParams.set('reciter', settings.reciterId);
+    u.searchParams.set('bg', settings.backgroundId);
+    u.searchParams.set('trans', settings.translationId);
+    if (settings.sadaqahText.trim()) {
+      u.searchParams.set('sadaqah', settings.sadaqahText.trim());
+    }
     return u.toString();
   }
 
@@ -83,15 +96,19 @@ function fillRoundedRect(
   ctx.closePath();
 }
 
-function getQrBadgeMetrics(settings: StudioSettings, baseUnit: number) {
-  const url = resolveStudioQrUrl(settings);
+function getQrBadgeMetrics(
+  settings: StudioSettings,
+  baseUnit: number,
+  shareUrl?: string
+) {
+  const url = resolveStudioQrUrl(settings, shareUrl);
   const matrix = getOrCreateQrMatrix(url);
   if (!matrix) return null;
 
   const quietModules = 2;
   const totalModules = matrix.size + quietModules * 2;
   // Crisp integer module pixel size so every QR module stays razor-sharp in H.264 MP4
-  const targetQrPx = Math.round(72 * baseUnit);
+  const targetQrPx = Math.round(78 * baseUnit);
   const modulePx = Math.max(2, Math.round(targetQrPx / totalModules));
   const qrBoxPx = totalModules * modulePx;
   const padPx = Math.max(4, Math.round(5 * baseUnit));
@@ -116,9 +133,10 @@ function drawRightSidePageQrBadge(
   w: number,
   h: number,
   baseUnit: number,
-  settings: StudioSettings
+  settings: StudioSettings,
+  shareUrl?: string
 ) {
-  const metrics = getQrBadgeMetrics(settings, baseUnit);
+  const metrics = getQrBadgeMetrics(settings, baseUnit, shareUrl);
   if (!metrics) return;
 
   const { matrix, quietModules, modulePx, qrBoxPx, padPx, cardW, cardH } = metrics;
@@ -375,6 +393,201 @@ function drawParticles(
   ctx.restore();
 }
 
+const FILM_GRAIN_TILE_SIZE = 180;
+let cachedFilmGrainTile: HTMLCanvasElement | null = null;
+
+function getOrCreateFilmGrainTile(): HTMLCanvasElement | null {
+  if (cachedFilmGrainTile) return cachedFilmGrainTile;
+  if (typeof document === 'undefined') return null;
+
+  const tile = document.createElement('canvas');
+  tile.width = FILM_GRAIN_TILE_SIZE;
+  tile.height = FILM_GRAIN_TILE_SIZE;
+  const tCtx = tile.getContext('2d');
+  if (!tCtx) return null;
+
+  const imgData = tCtx.createImageData(FILM_GRAIN_TILE_SIZE, FILM_GRAIN_TILE_SIZE);
+  const pixels = imgData.data;
+
+  // Deterministic, balanced 35mm monochrome silver-halide grain (zero brightness shift)
+  let seed = 133791;
+  const nextRand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
+
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r1 = nextRand();
+    const r2 = nextRand();
+    const centered = (r1 + r2) * 0.5 - 0.5;
+    const magnitude = Math.abs(centered);
+
+    if (magnitude < 0.08) {
+      pixels[i + 3] = 0;
+    } else if (centered > 0) {
+      pixels[i] = 248;
+      pixels[i + 1] = 244;
+      pixels[i + 2] = 232;
+      pixels[i + 3] = Math.min(255, Math.round(magnitude * 215));
+    } else {
+      pixels[i] = 8;
+      pixels[i + 1] = 12;
+      pixels[i + 2] = 18;
+      pixels[i + 3] = Math.min(255, Math.round(magnitude * 215));
+    }
+  }
+
+  tCtx.putImageData(imgData, 0, 0);
+  cachedFilmGrainTile = tile;
+  return tile;
+}
+
+function drawMovingMistLayer(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  timeSec: number,
+  intensity: number
+) {
+  ctx.save();
+  const mistBands = [
+    { seedX: 0.12, baseY: 0.76, speed: 0.026, rx: 0.58, ry: 0.21, tint: '214, 230, 240', weight: 0.16 },
+    { seedX: 0.62, baseY: 0.64, speed: -0.021, rx: 0.52, ry: 0.19, tint: '226, 236, 234', weight: 0.13 },
+    { seedX: 0.34, baseY: 0.48, speed: 0.017, rx: 0.62, ry: 0.22, tint: '203, 224, 235', weight: 0.11 },
+    { seedX: 0.84, baseY: 0.84, speed: -0.029, rx: 0.55, ry: 0.18, tint: '220, 232, 238', weight: 0.15 },
+    { seedX: 0.48, baseY: 0.31, speed: 0.014, rx: 0.48, ry: 0.16, tint: '240, 232, 212', weight: 0.085 },
+    { seedX: 0.05, baseY: 0.57, speed: 0.022, rx: 0.5, ry: 0.18, tint: '210, 228, 236', weight: 0.12 },
+  ];
+
+  for (let i = 0; i < mistBands.length; i++) {
+    const band = mistBands[i];
+    const rawPos = (((band.seedX + timeSec * band.speed) % 1.9) + 1.9) % 1.9;
+    const cx = (rawPos - 0.45) * w;
+    const cy = (band.baseY + Math.sin(timeSec * 0.28 + i * 1.7) * 0.028) * h;
+
+    const radX = Math.max(40, band.rx * w);
+    const radY = Math.max(24, band.ry * h);
+    const peakAlpha = Math.min(0.32, band.weight * (0.45 + intensity * 0.95));
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(1, radY / radX);
+
+    const grad = ctx.createRadialGradient(0, 0, radX * 0.06, 0, 0, radX);
+    grad.addColorStop(0, `rgba(${band.tint}, ${peakAlpha.toFixed(3)})`);
+    grad.addColorStop(0.52, `rgba(${band.tint}, ${(peakAlpha * 0.46).toFixed(3)})`);
+    grad.addColorStop(1, `rgba(${band.tint}, 0)`);
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(0, 0, radX, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawWarmLightRaysLayer(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  timeSec: number,
+  intensity: number
+) {
+  ctx.save();
+  const rayConfigs = [
+    { anchorX: 0.22, angle: 0.34, widthRatio: 0.26, phase: 0.0, alphaBase: 0.085 },
+    { anchorX: 0.52, angle: 0.29, widthRatio: 0.32, phase: 1.8, alphaBase: 0.075 },
+    { anchorX: 0.78, angle: 0.36, widthRatio: 0.22, phase: 3.4, alphaBase: 0.065 },
+  ];
+
+  const diagLen = Math.hypot(w, h) * 1.15;
+
+  for (let i = 0; i < rayConfigs.length; i++) {
+    const ray = rayConfigs[i];
+    const pulse = 0.72 + 0.28 * Math.sin(timeSec * 0.38 + ray.phase);
+    const alpha = Math.min(0.22, ray.alphaBase * pulse * (0.45 + intensity * 0.95));
+    const beamW = w * ray.widthRatio;
+
+    ctx.save();
+    ctx.translate(w * ray.anchorX, -h * 0.08);
+    ctx.rotate(ray.angle + Math.sin(timeSec * 0.16 + i) * 0.025);
+
+    const beamGrad = ctx.createLinearGradient(-beamW * 0.5, 0, beamW * 0.5, 0);
+    beamGrad.addColorStop(0, 'rgba(243, 207, 122, 0)');
+    beamGrad.addColorStop(0.5, `rgba(243, 207, 122, ${alpha.toFixed(3)})`);
+    beamGrad.addColorStop(1, 'rgba(243, 207, 122, 0)');
+
+    ctx.fillStyle = beamGrad;
+    ctx.fillRect(-beamW * 0.5, 0, beamW, diagLen);
+    ctx.restore();
+  }
+
+  const topGlow = ctx.createRadialGradient(w * 0.5, 0, w * 0.04, w * 0.5, 0, h * 0.65);
+  topGlow.addColorStop(0, `rgba(243, 207, 122, ${(0.07 * intensity).toFixed(3)})`);
+  topGlow.addColorStop(1, 'rgba(243, 207, 122, 0)');
+  ctx.fillStyle = topGlow;
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.restore();
+}
+
+function drawFilmGrainLayer(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  timeSec: number,
+  intensity: number
+) {
+  const tile = getOrCreateFilmGrainTile();
+  if (!tile) return;
+
+  const frameStep = Math.floor(timeSec * 15);
+  const offsetX = -((frameStep * 67) % FILM_GRAIN_TILE_SIZE);
+  const offsetY = -((frameStep * 109) % FILM_GRAIN_TILE_SIZE);
+
+  ctx.save();
+  ctx.globalAlpha = Math.min(0.42, 0.09 + intensity * 0.24);
+
+  for (let y = offsetY; y < h; y += FILM_GRAIN_TILE_SIZE) {
+    for (let x = offsetX; x < w; x += FILM_GRAIN_TILE_SIZE) {
+      ctx.drawImage(tile, x, y);
+    }
+  }
+
+  ctx.restore();
+}
+
+function drawBackgroundAtmosphere(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  timeSec: number,
+  effect: BackgroundAtmosphereEffect,
+  intensity: number
+) {
+  if (!effect || effect === BackgroundAtmosphereEffect.None) return;
+  const safeIntensity = Math.max(0.15, Math.min(1, Number.isFinite(intensity) ? intensity : 0.55));
+
+  if (
+    effect === BackgroundAtmosphereEffect.MovingMist ||
+    effect === BackgroundAtmosphereEffect.GrainAndMist
+  ) {
+    drawMovingMistLayer(ctx, w, h, timeSec, safeIntensity);
+  }
+
+  if (effect === BackgroundAtmosphereEffect.WarmRays) {
+    drawWarmLightRaysLayer(ctx, w, h, timeSec, safeIntensity);
+  }
+
+  if (
+    effect === BackgroundAtmosphereEffect.FilmGrain ||
+    effect === BackgroundAtmosphereEffect.GrainAndMist
+  ) {
+    drawFilmGrainLayer(ctx, w, h, timeSec, safeIntensity);
+  }
+}
+
 function layoutArabicWordLines(
   ctx: CanvasRenderingContext2D,
   words: WordTiming[],
@@ -451,6 +664,8 @@ export function renderReelFrame(params: {
   isIdlePreview?: boolean;
   isReadingMode?: boolean;
   readingFontBoost?: number;
+  shareUrl?: string;
+  hideCanvasQrBadge?: boolean;
 }) {
   const {
     ctx,
@@ -463,6 +678,8 @@ export function renderReelFrame(params: {
     isIdlePreview = false,
     isReadingMode = false,
     readingFontBoost = 1.35,
+    shareUrl,
+    hideCanvasQrBadge = false,
   } = params;
   const baseUnit = Math.min(w, h) / 720;
 
@@ -537,12 +754,20 @@ export function renderReelFrame(params: {
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, w, h);
 
-  // 3. Ambient Particles
+  // 3. Subtle Background Atmosphere Effects & Ambient Particles
+  drawBackgroundAtmosphere(
+    ctx,
+    w,
+    h,
+    timeSec,
+    settings.atmosphereEffect,
+    settings.atmosphereIntensity
+  );
   drawParticles(ctx, w, h, timeSec, settings.particleEffect);
 
   if (!reelData) {
-    if (settings.showPageQrCode && !isReadingMode) {
-      drawRightSidePageQrBadge(ctx, w, h, baseUnit, settings);
+    if (settings.showPageQrCode && !isReadingMode && !hideCanvasQrBadge) {
+      drawRightSidePageQrBadge(ctx, w, h, baseUnit, settings, shareUrl);
     }
     ctx.restore();
     return;
@@ -550,7 +775,7 @@ export function renderReelFrame(params: {
 
   const qrMetrics =
     settings.showPageQrCode && !isReadingMode
-      ? getQrBadgeMetrics(settings, baseUnit)
+      ? getQrBadgeMetrics(settings, baseUnit, shareUrl)
       : null;
 
   const fontChoice = QURAN_FONTS.find((f) => f.id === settings.fontId) || QURAN_FONTS[0];
@@ -828,8 +1053,8 @@ export function renderReelFrame(params: {
   ctx.restore();
 
   // 7. Right-Side Page QR Code Badge (for easy discovery on published Reels/Shorts)
-  if (settings.showPageQrCode && !isReadingMode) {
-    drawRightSidePageQrBadge(ctx, w, h, baseUnit, settings);
+  if (settings.showPageQrCode && !isReadingMode && !hideCanvasQrBadge) {
+    drawRightSidePageQrBadge(ctx, w, h, baseUnit, settings, shareUrl);
   }
 
   // 8. Optional Bottom Progress Line
@@ -842,6 +1067,117 @@ export function renderReelFrame(params: {
     ctx.fillRect(0, h - barH, w * progressRatio, barH);
   }
 
+  ctx.restore();
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace('#', '').trim();
+  const safeAlpha = Math.max(0, Math.min(1, alpha));
+  if (clean.length === 3) {
+    const r = parseInt(clean[0] + clean[0], 16);
+    const g = parseInt(clean[1] + clean[1], 16);
+    const b = parseInt(clean[2] + clean[2], 16);
+    if (!Number.isNaN(r) && !Number.isNaN(g) && !Number.isNaN(b)) {
+      return `rgba(${r}, ${g}, ${b}, ${safeAlpha.toFixed(3)})`;
+    }
+  } else if (clean.length >= 6) {
+    const r = parseInt(clean.slice(0, 2), 16);
+    const g = parseInt(clean.slice(2, 4), 16);
+    const b = parseInt(clean.slice(4, 6), 16);
+    if (!Number.isNaN(r) && !Number.isNaN(g) && !Number.isNaN(b)) {
+      return `rgba(${r}, ${g}, ${b}, ${safeAlpha.toFixed(3)})`;
+    }
+  }
+  return `rgba(243, 207, 122, ${safeAlpha.toFixed(3)})`;
+}
+
+function drawHighlightedQuranWord(params: {
+  ctx: CanvasRenderingContext2D;
+  text: string;
+  wordRightX: number;
+  wordWidth: number;
+  centerY: number;
+  arabicPx: number;
+  highlightColor: string;
+  softGlowEnabled: boolean;
+  glowIntensity: number;
+  appearAlpha: number;
+  baseUnit: number;
+}) {
+  const {
+    ctx,
+    text,
+    wordRightX,
+    wordWidth,
+    centerY,
+    arabicPx,
+    highlightColor,
+    softGlowEnabled,
+    glowIntensity,
+    appearAlpha,
+    baseUnit,
+  } = params;
+
+  const safeIntensity = Math.max(
+    0.2,
+    Math.min(1, Number.isFinite(glowIntensity) ? glowIntensity : 0.65)
+  );
+
+  if (!softGlowEnabled) {
+    ctx.save();
+    ctx.globalAlpha = appearAlpha;
+    ctx.fillStyle = highlightColor;
+    ctx.shadowColor = 'rgba(2, 6, 14, 0.85)';
+    ctx.shadowBlur = 11 * baseUnit;
+    ctx.fillText(text, wordRightX, centerY);
+    ctx.restore();
+    return;
+  }
+
+  // 1. Soft elliptical luminous backdrop halo behind the highlighted word to separate from busy/dark scenes
+  const wordCenterX = wordRightX - wordWidth * 0.5;
+  const haloRx = Math.max(wordWidth * 0.72, arabicPx * 0.95);
+  const haloRy = Math.max(arabicPx * 0.76, 18 * baseUnit);
+
+  ctx.save();
+  ctx.globalAlpha = appearAlpha;
+  ctx.translate(wordCenterX, centerY);
+  ctx.scale(1, haloRy / haloRx);
+  const haloGrad = ctx.createRadialGradient(0, 0, haloRx * 0.08, 0, 0, haloRx);
+  haloGrad.addColorStop(0, hexToRgba(highlightColor, 0.14 + safeIntensity * 0.16));
+  haloGrad.addColorStop(0.55, hexToRgba(highlightColor, 0.05 + safeIntensity * 0.07));
+  haloGrad.addColorStop(1, hexToRgba(highlightColor, 0));
+  ctx.fillStyle = haloGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, haloRx, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // 2. Crisp dark contrast cushion directly under glyph strokes so diacritics stay legible on complex spots
+  ctx.save();
+  ctx.globalAlpha = appearAlpha * 0.92;
+  ctx.fillStyle = 'rgba(3, 7, 15, 0.55)';
+  ctx.shadowColor = 'rgba(2, 6, 14, 0.92)';
+  ctx.shadowBlur = 9 * baseUnit;
+  ctx.fillText(text, wordRightX, centerY);
+  ctx.restore();
+
+  // 3. Diffused outer Soft Glow bloom
+  ctx.save();
+  ctx.globalAlpha = appearAlpha * (0.58 + safeIntensity * 0.42);
+  ctx.fillStyle = highlightColor;
+  ctx.shadowColor = hexToRgba(highlightColor, 0.95);
+  ctx.shadowBlur = (20 + safeIntensity * 28) * baseUnit;
+  ctx.fillText(text, wordRightX, centerY);
+  ctx.restore();
+
+  // 4. Razor-sharp foreground calligraphy pass with warm inner glow
+  ctx.save();
+  ctx.globalAlpha = appearAlpha;
+  ctx.fillStyle = highlightColor;
+  ctx.shadowColor = hexToRgba(highlightColor, 0.75);
+  ctx.shadowBlur = (7 + safeIntensity * 11) * baseUnit;
+  ctx.fillText(text, wordRightX, centerY);
   ctx.restore();
 }
 
@@ -886,13 +1222,28 @@ function drawArabicWordLines(params: {
     const baseLineY = startY + lineIdx * arabicLineHeight;
 
     if (settings.wordRevealMode === WordRevealMode.StaticFull && !isReadingMode) {
+      const lineStr = lineWords.map((lw) => lw.text).join(' ');
+      if (settings.highlightSoftGlow) {
+        const safeIntensity = Math.max(
+          0.2,
+          Math.min(1, settings.highlightGlowIntensity || 0.65)
+        );
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.direction = 'rtl';
+        ctx.fillStyle = settings.textColor;
+        ctx.shadowColor = hexToRgba(settings.highlightColor, 0.62 * safeIntensity);
+        ctx.shadowBlur = (16 + safeIntensity * 20) * baseUnit;
+        ctx.fillText(lineStr, lineCenter, baseLineY);
+        ctx.restore();
+      }
+
       ctx.save();
       ctx.textAlign = 'center';
       ctx.direction = 'rtl';
       ctx.fillStyle = settings.textColor;
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.78)';
-      ctx.shadowBlur = 12 * baseUnit;
-      const lineStr = lineWords.map((lw) => lw.text).join(' ');
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.82)';
+      ctx.shadowBlur = 11 * baseUnit;
       ctx.fillText(lineStr, lineCenter, baseLineY);
       ctx.restore();
       return;
@@ -908,7 +1259,8 @@ function drawArabicWordLines(params: {
 
     lineWords.forEach((lw, wIdx) => {
       const wordX = rightCursor;
-      rightCursor -= widths[wIdx] + spaceGap;
+      const wordW = widths[wIdx];
+      rightCursor -= wordW + spaceGap;
 
       const onsetSec = lw.startSec - 0.05;
       const isSpokenOrCurrent = timeSec >= onsetSec;
@@ -928,43 +1280,67 @@ function drawArabicWordLines(params: {
         const appearProgress = Math.min(1, Math.max(0.08, (timeSec - onsetSec) / 0.14));
         const slideOffsetY = (1 - appearProgress) * (7 * baseUnit);
 
-        ctx.save();
-        ctx.globalAlpha = appearProgress;
-
         if (lw.isEndMarker) {
+          ctx.save();
+          ctx.globalAlpha = appearProgress;
           ctx.fillStyle = '#F3CF7A';
           ctx.shadowColor = 'rgba(0, 0, 0, 0.75)';
           ctx.shadowBlur = 10 * baseUnit;
+          ctx.fillText(lw.text, wordX, baseLineY + slideOffsetY);
+          ctx.restore();
         } else if (isActivelyPronounced) {
-          ctx.fillStyle = settings.highlightColor;
-          ctx.shadowColor = settings.highlightColor;
-          ctx.shadowBlur = 18 * baseUnit;
+          drawHighlightedQuranWord({
+            ctx,
+            text: lw.text,
+            wordRightX: wordX,
+            wordWidth: wordW,
+            centerY: baseLineY + slideOffsetY,
+            arabicPx,
+            highlightColor: settings.highlightColor,
+            softGlowEnabled: settings.highlightSoftGlow,
+            glowIntensity: settings.highlightGlowIntensity,
+            appearAlpha: appearProgress,
+            baseUnit,
+          });
         } else {
+          ctx.save();
+          ctx.globalAlpha = appearProgress;
           ctx.fillStyle = settings.textColor;
           ctx.shadowColor = 'rgba(0, 0, 0, 0.78)';
           ctx.shadowBlur = 11 * baseUnit;
+          ctx.fillText(lw.text, wordX, baseLineY + slideOffsetY);
+          ctx.restore();
         }
-
-        ctx.fillText(lw.text, wordX, baseLineY + slideOffsetY);
-        ctx.restore();
       } else {
         // HighlightFull mode, Reading Mode (full verse visible for calm reading along), or paused poster preview
+        const isIdleHighlightedFirstWord =
+          isIdlePreview && lineIdx === 0 && wIdx === 0 && !lw.isEndMarker;
+        const isLiveHighlightedWord =
+          !isIdlePreview && isActivelyPronounced && !lw.isEndMarker;
+
+        if (isIdleHighlightedFirstWord || isLiveHighlightedWord) {
+          drawHighlightedQuranWord({
+            ctx,
+            text: lw.text,
+            wordRightX: wordX,
+            wordWidth: wordW,
+            centerY: baseLineY,
+            arabicPx,
+            highlightColor: settings.highlightColor,
+            softGlowEnabled: settings.highlightSoftGlow,
+            glowIntensity: settings.highlightGlowIntensity,
+            appearAlpha: 1,
+            baseUnit,
+          });
+          return;
+        }
+
         ctx.save();
         if (lw.isEndMarker) {
           ctx.globalAlpha = isIdlePreview ? 0.9 : isSpokenOrCurrent ? 1 : isReadingMode ? 0.65 : 0.4;
           ctx.fillStyle = '#F3CF7A';
           ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
           ctx.shadowBlur = 9 * baseUnit;
-        } else if (isIdlePreview && lineIdx === 0 && wIdx === 0) {
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = settings.highlightColor;
-          ctx.shadowColor = settings.highlightColor;
-          ctx.shadowBlur = 16 * baseUnit;
-        } else if (!isIdlePreview && isActivelyPronounced) {
-          ctx.globalAlpha = 1;
-          ctx.fillStyle = settings.highlightColor;
-          ctx.shadowColor = settings.highlightColor;
-          ctx.shadowBlur = 18 * baseUnit;
         } else if (!isIdlePreview && isSpokenOrCurrent) {
           ctx.globalAlpha = 1;
           ctx.fillStyle = settings.textColor;

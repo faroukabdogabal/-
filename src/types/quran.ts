@@ -10,6 +10,14 @@ export enum ParticleEffect {
   None = 'none',
 }
 
+export enum BackgroundAtmosphereEffect {
+  None = 'none',
+  FilmGrain = 'film_grain',
+  MovingMist = 'moving_mist',
+  WarmRays = 'warm_rays',
+  GrainAndMist = 'grain_and_mist',
+}
+
 export enum ExportResolution {
   HD720 = '720p',
 }
@@ -101,11 +109,15 @@ export interface StudioSettings {
   dimming: number; // 0.2 to 0.88
   kenBurnsMotion: boolean;
   particleEffect: ParticleEffect;
+  atmosphereEffect: BackgroundAtmosphereEffect;
+  atmosphereIntensity: number; // 0.2 to 1.0
   fontId: string;
   arabicFontSize: number; // scale multiplier 0.8 to 1.35
   translationFontSize: number; // scale multiplier 0.8 to 1.3
   wordRevealMode: WordRevealMode;
   highlightColor: string;
+  highlightSoftGlow: boolean;
+  highlightGlowIntensity: number; // 0.2 to 1.0
   textColor: string;
   autoSplitLongAyahs: boolean;
   showSurahHeader: boolean;

@@ -189,8 +189,9 @@ async function exportWithWebCodecsMp4(params: {
   visuals: LoadedVisualAssets;
   onProgress: (p: ExportProgressState) => void;
   signal?: AbortSignal;
+  shareUrl?: string;
 }): Promise<Blob> {
-  const { width, height, videoCodec, reelData, settings, visuals, onProgress, signal } = params;
+  const { width, height, videoCodec, reelData, settings, visuals, onProgress, signal, shareUrl } = params;
   const fps = 30;
   const durationSec = reelData.totalDurationSec;
   const totalFrames = Math.max(1, Math.ceil(durationSec * fps));
@@ -317,6 +318,7 @@ async function exportWithWebCodecsMp4(params: {
       reelData,
       visuals: exportVisuals,
       isIdlePreview: false,
+      shareUrl,
     });
 
     const timestampUs = Math.round((frameIdx / fps) * 1_000_000);
@@ -367,8 +369,9 @@ async function exportWithMediaRecorderFallback(params: {
   visuals: LoadedVisualAssets;
   onProgress: (p: ExportProgressState) => void;
   signal?: AbortSignal;
+  shareUrl?: string;
 }): Promise<{ blob: Blob; ext: 'mp4' | 'webm' }> {
-  const { width, height, reelData, settings, visuals, onProgress, signal } = params;
+  const { width, height, reelData, settings, visuals, onProgress, signal, shareUrl } = params;
 
   await ensureCanvasFontsLoaded(settings.fontId);
 
@@ -464,6 +467,7 @@ async function exportWithMediaRecorderFallback(params: {
         reelData,
         visuals,
         isIdlePreview: false,
+        shareUrl,
       });
 
       const pct = Math.min(98, Math.round((elapsed / totalDur) * 98));
@@ -501,8 +505,9 @@ export async function exportQuranPosterPng(params: {
   settings: StudioSettings;
   visuals: LoadedVisualAssets;
   timeSec?: number;
+  shareUrl?: string;
 }): Promise<ExportedPosterImage> {
-  const { reelData, settings, visuals, timeSec = 0 } = params;
+  const { reelData, settings, visuals, timeSec = 0, shareUrl } = params;
   await ensureCanvasFontsLoaded(settings.fontId);
 
   const { width, height } = getTargetDimensions(
@@ -527,6 +532,7 @@ export async function exportQuranPosterPng(params: {
     reelData,
     visuals,
     isIdlePreview: true,
+    shareUrl,
   });
 
   const blob = await new Promise<Blob>((resolve, reject) => {
@@ -551,6 +557,7 @@ export async function exportQuranReelVideo(params: {
   onProgress: (p: ExportProgressState) => void;
   signal?: AbortSignal;
   autoDownload?: boolean;
+  shareUrl?: string;
 }): Promise<ExportedVideoFile> {
   const {
     reelData,
@@ -559,6 +566,7 @@ export async function exportQuranReelVideo(params: {
     onProgress,
     signal,
     autoDownload = true,
+    shareUrl,
   } = params;
   const { width, height } = getTargetDimensions(
     settings.aspectRatio,
@@ -592,6 +600,7 @@ export async function exportQuranReelVideo(params: {
       visuals,
       onProgress,
       signal,
+      shareUrl,
     });
   } else {
     const fallbackResult = await exportWithMediaRecorderFallback({
@@ -602,6 +611,7 @@ export async function exportQuranReelVideo(params: {
       visuals,
       onProgress,
       signal,
+      shareUrl,
     });
     finalBlob = fallbackResult.blob;
     extension = fallbackResult.ext;

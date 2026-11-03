@@ -35,6 +35,7 @@ import {
 } from './firebase';
 import { fetchSurahsList, loadAndPrepareReelData } from './services/quranApi';
 import {
+  BackgroundAtmosphereEffect,
   PreparedReelData,
   QuickPreset,
   StudioSettings,
@@ -62,6 +63,8 @@ function parseInitialSettingsFromUrl(): {
   const bgParam = params.get('bg');
   const transParam = params.get('trans');
   const sadaqahParam = params.get('sadaqah');
+  const atmoParam = params.get('atmo');
+  const glowParam = params.get('glow');
 
   let hasUrlOverrides = false;
   const merged: StudioSettings = { ...DEFAULT_STUDIO_SETTINGS };
@@ -94,6 +97,17 @@ function parseInitialSettingsFromUrl(): {
   if (transParam && TRANSLATIONS.some((t) => t.id === transParam)) {
     hasUrlOverrides = true;
     merged.translationId = transParam;
+  }
+  if (
+    atmoParam &&
+    (Object.values(BackgroundAtmosphereEffect) as string[]).includes(atmoParam)
+  ) {
+    hasUrlOverrides = true;
+    merged.atmosphereEffect = atmoParam as BackgroundAtmosphereEffect;
+  }
+  if (glowParam === '0' || glowParam === '1') {
+    hasUrlOverrides = true;
+    merged.highlightSoftGlow = glowParam === '1';
   }
   if (sadaqahParam !== null && sadaqahParam.trim().length > 0) {
     hasUrlOverrides = true;
@@ -521,6 +535,12 @@ export default function App() {
       url.searchParams.set('reciter', target.reciterId);
       url.searchParams.set('bg', target.backgroundId);
       url.searchParams.set('trans', target.translationId);
+      if (target.atmosphereEffect !== BackgroundAtmosphereEffect.None) {
+        url.searchParams.set('atmo', target.atmosphereEffect);
+      }
+      if (!target.highlightSoftGlow) {
+        url.searchParams.set('glow', '0');
+      }
       if (target.sadaqahText.trim()) {
         url.searchParams.set('sadaqah', target.sadaqahText.trim());
       }
@@ -671,6 +691,7 @@ export default function App() {
           loadingMessage={loadingMessage}
           reelError={reelError}
           onReloadReel={() => setReloadNonce((n) => n + 1)}
+          buildShareUrl={buildShareUrl}
           onCopyShareLink={handleCopyCurrentShareLink}
           allowCustomSadaqah={siteConfig.allowPublicCustomSadaqah}
           officialSadaqahLabel={siteConfig.sadaqahLabel}

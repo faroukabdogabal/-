@@ -5,6 +5,7 @@ import bgCalmOcean from '../assets/images/bg_calm_ocean_horizon_1793212159201.jp
 import bgEmeraldRain from '../assets/images/bg_emerald_rain_leaves_1793212159500.jpg';
 
 import {
+  BackgroundAtmosphereEffect,
   BackgroundPreset,
   ExportResolution,
   FontOption,
@@ -220,11 +221,15 @@ export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
   dimming: 0.56,
   kenBurnsMotion: true,
   particleEffect: ParticleEffect.Dust,
+  atmosphereEffect: BackgroundAtmosphereEffect.None,
+  atmosphereIntensity: 0.55,
   fontId: 'amiri_quran',
   arabicFontSize: 1.0,
   translationFontSize: 1.0,
   wordRevealMode: WordRevealMode.Progressive,
   highlightColor: '#F3CF7A',
+  highlightSoftGlow: true,
+  highlightGlowIntensity: 0.65,
   textColor: '#FFFFFF',
   autoSplitLongAyahs: true,
   showSurahHeader: true,
@@ -232,6 +237,6 @@ export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
   showProgressBar: true,
   showPageQrCode: true,
   qrCodePosition: 'bottom-right',
-  qrCodeLinkMode: 'page',
+  qrCodeLinkMode: 'reel',
   sadaqahText: 'صدقة جارية عن عائلة فاروق جبل',
 };

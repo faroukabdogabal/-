@@ -19,13 +19,16 @@ import {
   Share2,
   Sliders,
   Sparkles,
+  Sun,
   Type,
   Volume2,
   VolumeX,
+  Wind,
   X,
   ZoomIn,
   ZoomOut,
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   BACKGROUNDS,
   HIGHLIGHT_COLORS,
@@ -51,9 +54,11 @@ import {
   ExportSuccessToast,
 } from './ExportSuccessToast';
 import { QuickExportShareFab } from './QuickExportShareFab';
+import { SavedReelsLibrary } from './SavedReelsLibrary';
 import { SocialShareDock } from './SocialShareDock';
 import { PublicStatsData } from '../firebase';
 import {
+  BackgroundAtmosphereEffect,
   ExportProgressState,
   ExportResolution,
   ParticleEffect,
@@ -75,6 +80,7 @@ interface StudioWorkspaceProps {
   loadingMessage: string;
   reelError: string | null;
   onReloadReel: () => void;
+  buildShareUrl: (customOverrides?: Partial<StudioSettings>) => string;
   onCopyShareLink: () => Promise<boolean>;
   allowCustomSadaqah: boolean;
   officialSadaqahLabel: string;
@@ -114,6 +120,7 @@ export function StudioWorkspace({
   loadingMessage,
   reelError,
   onReloadReel,
+  buildShareUrl,
   onCopyShareLink,
   allowCustomSadaqah,
   officialSadaqahLabel,
@@ -197,6 +204,17 @@ export function StudioWorkspace({
   const loadedBgImgRef = useRef<HTMLImageElement | null>(loadedBgImg);
   loadedBgImgRef.current = loadedBgImg;
 
+  const dynamicShareUrl = useMemo(() => buildShareUrl(), [buildShareUrl]);
+  const activeQrUrl = useMemo(
+    () =>
+      settings.qrCodeLinkMode === 'page'
+        ? resolveStudioQrUrl(settings, dynamicShareUrl)
+        : dynamicShareUrl,
+    [settings, dynamicShareUrl]
+  );
+  const activeQrUrlRef = useRef<string>(activeQrUrl);
+  activeQrUrlRef.current = activeQrUrl;
+
   const [exportProgress, setExportProgress] = useState<ExportProgressState>({
     status: 'idle',
     percent: 0,
@@ -240,11 +258,23 @@ export function StudioWorkspace({
     settings.aspectRatio,
     settings.backgroundId,
     settings.customBgUrl,
+    settings.dimming,
+    settings.kenBurnsMotion,
+    settings.particleEffect,
+    settings.atmosphereEffect,
+    settings.atmosphereIntensity,
     settings.fontId,
     settings.arabicFontSize,
     settings.translationId,
     settings.wordRevealMode,
+    settings.highlightColor,
+    settings.highlightSoftGlow,
+    settings.highlightGlowIntensity,
     settings.sadaqahText,
+    settings.showPageQrCode,
+    settings.qrCodePosition,
+    settings.qrCodeLinkMode,
+    activeQrUrl,
   ]);
 
   // Load selected photo or custom uploaded image into HTMLImageElement
@@ -486,6 +516,8 @@ export function StudioWorkspace({
             isIdlePreview: isIdlePoster,
             isReadingMode: isReadingModeRef.current,
             readingFontBoost: readingFontBoostRef.current,
+            shareUrl: activeQrUrlRef.current,
+            hideCanvasQrBadge: true,
           });
 
           // Synchronize top visual countdown progress bar & sub-second timer at 60fps
@@ -604,6 +636,7 @@ export function StudioWorkspace({
         onProgress: setExportProgress,
         signal: controller.signal,
         autoDownload,
+        shareUrl: activeQrUrl,
       });
       setLastExportedVideo(exported);
       onRecordReelExported();
@@ -693,6 +726,7 @@ export function StudioWorkspace({
         settings,
         visuals,
         timeSec: currentTimeRef.current || 0,
+        shareUrl: activeQrUrl,
       });
     } catch {
       return null;
@@ -1270,8 +1304,8 @@ export function StudioWorkspace({
                     </div>
                   </div>
 
-                  {/* Dimming & Motion Controls */}
-                  <div className="pt-4 border-t border-slate-800/70 space-y-4">
+                  {/* Dimming, Subtle Background Visual Effects & Motion Controls */}
+                  <div className="pt-4 border-t border-slate-800/70 space-y-5">
                     <div>
                       <div className="flex items-center justify-between text-xs sm:text-sm mb-1.5">
                         <label htmlFor="dimming-range" className="font-medium text-slate-200">
@@ -1295,10 +1329,145 @@ export function StudioWorkspace({
                       />
                     </div>
 
+                    {/* Subtle Background Visual Effects (Film Grain, Moving Mist, Warm Rays) */}
+                    <div className="rounded-xl border border-slate-800/90 bg-[#0E131A] p-4 space-y-3.5">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-xs sm:text-sm font-semibold text-slate-100 flex items-center gap-2">
+                            <Wind className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>تأثيرات بصرية خفيفة على الخلفية</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            أضف لمسة سينمائية هادئة كالحبيبات الفيلمية أو الضباب المتنقل لتعزيز جمالية المقطع دون التأثير على وضوح الآيات
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {(
+                          [
+                            {
+                              id: BackgroundAtmosphereEffect.None,
+                              title: 'بدون تأثير إضافي',
+                              desc: 'عرض الخلفية الأصلية الصافية كما هي',
+                              icon: X,
+                            },
+                            {
+                              id: BackgroundAtmosphereEffect.FilmGrain,
+                              title: 'حبيبات فيلمية',
+                              desc: 'ملمس سينمائي 35mm دافئ وهادئ',
+                              icon: Film,
+                            },
+                            {
+                              id: BackgroundAtmosphereEffect.MovingMist,
+                              title: 'تأثير الضباب المتنقل',
+                              desc: 'طبقات ضباب ناعمة تنساب بهدوء',
+                              icon: Wind,
+                            },
+                            {
+                              id: BackgroundAtmosphereEffect.WarmRays,
+                              title: 'أشعة نور خافتة',
+                              desc: 'حزم ضوئية هادئة من أعلى المشهد',
+                              icon: Sun,
+                            },
+                            {
+                              id: BackgroundAtmosphereEffect.GrainAndMist,
+                              title: 'ضباب + حبيبات فيلمية',
+                              desc: 'مزيج متناغم للضباب المتنقل والملمس الفيلمي',
+                              icon: Sparkles,
+                            },
+                          ] as const
+                        ).map((atmo) => {
+                          const IconComp = atmo.icon;
+                          const isActive = settings.atmosphereEffect === atmo.id;
+                          return (
+                            <button
+                              key={atmo.id}
+                              type="button"
+                              onClick={() =>
+                                onUpdateSettings({ atmosphereEffect: atmo.id })
+                              }
+                              className={`rounded-lg border p-2.5 text-right transition-colors cursor-pointer ${
+                                isActive
+                                  ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200'
+                                  : 'border-slate-800 bg-[#0B0F14] text-slate-300 hover:border-slate-700'
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 text-xs font-semibold">
+                                <IconComp className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                <span>{atmo.title}</span>
+                              </div>
+                              <div className="text-[11px] text-slate-400 mt-1 leading-snug">
+                                {atmo.desc}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {settings.atmosphereEffect !== BackgroundAtmosphereEffect.None && (
+                        <div className="pt-2.5 border-t border-slate-800/80 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <label
+                              htmlFor="atmosphere-intensity-range"
+                              className="font-medium text-slate-300"
+                            >
+                              شدة التأثير البصري على الخلفية
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              {[
+                                { label: 'هادئ', val: 0.35 },
+                                { label: 'متوازن', val: 0.55 },
+                                { label: 'غني', val: 0.8 },
+                              ].map((preset) => {
+                                const activePreset =
+                                  Math.abs(settings.atmosphereIntensity - preset.val) < 0.04;
+                                return (
+                                  <button
+                                    key={preset.label}
+                                    type="button"
+                                    onClick={() =>
+                                      onUpdateSettings({
+                                        atmosphereIntensity: preset.val,
+                                      })
+                                    }
+                                    className={`rounded border px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                                      activePreset
+                                        ? 'border-emerald-500/60 bg-emerald-500/15 text-emerald-200'
+                                        : 'border-slate-800 bg-[#0B0F14] text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                );
+                              })}
+                              <span className="text-emerald-300 font-mono tabular-nums mr-1">
+                                {Math.round(settings.atmosphereIntensity * 100)}%
+                              </span>
+                            </div>
+                          </div>
+                          <input
+                            id="atmosphere-intensity-range"
+                            type="range"
+                            min={0.2}
+                            max={1}
+                            step={0.05}
+                            value={settings.atmosphereIntensity}
+                            onChange={(e) =>
+                              onUpdateSettings({
+                                atmosphereIntensity: Number(e.target.value),
+                              })
+                            }
+                            className="w-full accent-emerald-400 cursor-pointer block"
+                          />
+                        </div>
+                      )}
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                       <div>
                         <label className="block text-xs text-slate-400 mb-1.5">
-                          المؤثرات البصرية الهادئة
+                          الجزيئات العائمة (يمكن دمجها مع تأثيرات الخلفية)
                         </label>
                         <div className="grid grid-cols-3 gap-1.5">
                           {[
@@ -1482,6 +1651,95 @@ export function StudioWorkspace({
                         </div>
                       </div>
                     )}
+
+                    {/* Soft Glow for Highlighted Quranic Text */}
+                    <div className="rounded-xl border border-slate-800/90 bg-[#0E131A] p-4 space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-100">
+                            <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                            <span>توهج ناعم للنص القرآني المظلل (Soft Glow)</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                            يضيف هالة ضوئية ناعمة مع طبقة تباين خلفية لإبراز الكلمات القرآنية المظللة وحركات التشكيل بوضوح عالٍ على الخلفيات الداكنة أو المعقدة.
+                          </p>
+                        </div>
+
+                        <label className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-[#0B0F14] px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer shrink-0">
+                          <span>{settings.highlightSoftGlow ? 'مُفعّل' : 'مُعطّل'}</span>
+                          <input
+                            type="checkbox"
+                            checked={settings.highlightSoftGlow}
+                            onChange={(e) =>
+                              onUpdateSettings({
+                                highlightSoftGlow: e.target.checked,
+                              })
+                            }
+                            className="h-4 w-4 accent-emerald-400"
+                          />
+                        </label>
+                      </div>
+
+                      {settings.highlightSoftGlow && (
+                        <div className="pt-2.5 border-t border-slate-800/80 space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <label
+                              htmlFor="soft-glow-intensity-range"
+                              className="font-medium text-slate-300"
+                            >
+                              شدة التوهج الناعم حول الكلمات المظللة
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              {[
+                                { label: 'خفيف', val: 0.35 },
+                                { label: 'متوازن', val: 0.65 },
+                                { label: 'ساطع', val: 0.95 },
+                              ].map((preset) => {
+                                const isCurrent =
+                                  Math.abs(settings.highlightGlowIntensity - preset.val) <
+                                  0.06;
+                                return (
+                                  <button
+                                    key={preset.label}
+                                    type="button"
+                                    onClick={() =>
+                                      onUpdateSettings({
+                                        highlightGlowIntensity: preset.val,
+                                      })
+                                    }
+                                    className={`rounded border px-2 py-0.5 text-[11px] transition-colors cursor-pointer ${
+                                      isCurrent
+                                        ? 'border-amber-400/60 bg-amber-400/15 text-amber-200'
+                                        : 'border-slate-800 bg-[#0B0F14] text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    {preset.label}
+                                  </button>
+                                );
+                              })}
+                              <span className="text-amber-300 font-mono tabular-nums mr-1">
+                                {Math.round(settings.highlightGlowIntensity * 100)}%
+                              </span>
+                            </div>
+                          </div>
+
+                          <input
+                            id="soft-glow-intensity-range"
+                            type="range"
+                            min={0.2}
+                            max={1}
+                            step={0.05}
+                            value={settings.highlightGlowIntensity}
+                            onChange={(e) =>
+                              onUpdateSettings({
+                                highlightGlowIntensity: Number(e.target.value),
+                              })
+                            }
+                            className="w-full accent-amber-300 cursor-pointer block"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Translation Language & Sizes */}
@@ -1758,14 +2016,14 @@ export function StudioWorkspace({
                             {(
                               [
                                 {
-                                  id: 'page',
-                                  title: 'رابط الصفحة الرئيسية (موصى به)',
-                                  desc: 'أوضح وأسرع في المسح بكاميرا الهاتف',
+                                  id: 'reel',
+                                  title: 'رابط المشاركة الديناميكي للمقطع (موصى به)',
+                                  desc: 'يفتح نفس السورة والآيات والقارئ والإعدادات مباشرة',
                                 },
                                 {
-                                  id: 'reel',
-                                  title: 'رابط هذا المقطع القرآني',
-                                  desc: 'يفتح نفس السورة والآيات والقارئ مباشرة',
+                                  id: 'page',
+                                  title: 'رابط المنصة الرئيسي المختصر',
+                                  desc: 'يوجّه المشاهد للصفحة الرئيسية للمنصة',
                                 },
                               ] as const
                             ).map((mode) => {
@@ -1793,11 +2051,30 @@ export function StudioWorkspace({
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-[#0B0F14] px-3 py-2 text-[11px] text-slate-400">
-                          <span className="shrink-0 text-slate-500">الرابط المشفّر:</span>
-                          <span dir="ltr" className="font-mono truncate text-emerald-300/90">
-                            {resolveStudioQrUrl(settings)}
-                          </span>
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-800/80 bg-[#0B0F14] px-3 py-2.5 text-[11px] text-slate-400">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <span className="block text-slate-500">
+                              الرابط الديناميكي المشفّر في الباركود:
+                            </span>
+                            <span
+                              dir="ltr"
+                              className="block font-mono truncate text-emerald-300/90"
+                            >
+                              {activeQrUrl}
+                            </span>
+                          </div>
+                          <div className="shrink-0 rounded-md bg-white p-1 shadow-xs">
+                            <QRCodeSVG
+                              value={activeQrUrl}
+                              size={44}
+                              level="L"
+                              bgColor="#FFFFFF"
+                              fgColor="#070B12"
+                              marginSize={1}
+                              title="معاينة رمز الاستجابة السريعة لرابط المشاركة"
+                              className="block"
+                            />
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2123,13 +2400,53 @@ export function StudioWorkspace({
                       type="button"
                       onClick={togglePlayPause}
                       aria-label="تشغيل المعاينة الحية لظهور الكلمات"
-                      className="absolute inset-0 flex flex-col items-center justify-center bg-black/25 hover:bg-black/35 transition-colors cursor-pointer group"
+                      className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/25 hover:bg-black/35 transition-colors cursor-pointer group"
                     >
                       <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-400/95 text-slate-950 shadow-lg group-hover:scale-105 transition-transform">
                         <Play className="w-5 h-5 fill-current" />
                       </span>
                       <span className="mt-2 rounded bg-black/65 px-2.5 py-1 text-[11px] font-medium text-slate-100">
                         اضغط لمعاينة كتابة الكلمات مع الصوت
+                      </span>
+                    </button>
+                  )}
+
+                  {/* Dynamic Right-Corner QR Code Overlay (encoding buildShareUrl) */}
+                  {settings.showPageQrCode && !isReadingMode && !isLoadingReel && !reelError && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShareClick();
+                      }}
+                      title="امسح الكود للوصول للمنصة أو اضغط لنسخ رابط المشاركة"
+                      aria-label="رمز QR في الزاوية اليمنى للفيديو يحتوي على رابط المشاركة الديناميكي"
+                      className={`absolute right-2.5 z-20 flex flex-col items-center rounded-lg border border-amber-300/45 bg-[#080D15]/88 p-1 shadow-lg backdrop-blur-xs transition-transform hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 cursor-pointer ${
+                        settings.qrCodePosition === 'top-right'
+                          ? 'top-2.5'
+                          : settings.qrCodePosition === 'middle-right'
+                          ? 'top-1/2 -translate-y-1/2'
+                          : 'bottom-2.5'
+                      }`}
+                    >
+                      <span className="rounded bg-white p-1 block">
+                        <QRCodeSVG
+                          value={activeQrUrl}
+                          size={52}
+                          level="L"
+                          bgColor="#FFFFFF"
+                          fgColor="#070B12"
+                          marginSize={1}
+                          title="امسح للوصول للمقطع القرآني على المنصة"
+                          className="block h-11 w-11 sm:h-12 sm:w-12"
+                        />
+                      </span>
+                      <span className="mt-0.5 text-[9px] font-semibold leading-tight text-amber-200/95 whitespace-nowrap px-0.5">
+                        {copiedLink
+                          ? 'تم النسخ'
+                          : settings.qrCodeLinkMode === 'page'
+                          ? 'امسح للمنصة'
+                          : 'امسح للمقطع'}
                       </span>
                     </button>
                   )}
@@ -2161,6 +2478,80 @@ export function StudioWorkspace({
                   )}
                 </div>
               </div>
+
+              {/* Quick Subtle Background Effect & Soft Glow Switcher beneath Live Preview */}
+              {!isReadingMode && (
+                <div className="mt-3 space-y-2 rounded-lg border border-slate-800/80 bg-[#0B0F14] px-2.5 py-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[11px] font-medium text-slate-400 shrink-0 flex items-center gap-1">
+                      <Wind className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>تأثير الخلفية:</span>
+                    </span>
+                    <div className="flex items-center gap-1 overflow-x-auto">
+                      {(
+                        [
+                          { id: BackgroundAtmosphereEffect.None, label: 'بدون' },
+                          { id: BackgroundAtmosphereEffect.FilmGrain, label: 'حبيبات فيلمية' },
+                          { id: BackgroundAtmosphereEffect.MovingMist, label: 'ضباب متنقل' },
+                          { id: BackgroundAtmosphereEffect.WarmRays, label: 'أشعة نور' },
+                          { id: BackgroundAtmosphereEffect.GrainAndMist, label: 'ضباب + حبيبات' },
+                        ] as const
+                      ).map((chip) => {
+                        const activeChip = settings.atmosphereEffect === chip.id;
+                        return (
+                          <button
+                            key={chip.id}
+                            type="button"
+                            onClick={() =>
+                              onUpdateSettings({ atmosphereEffect: chip.id })
+                            }
+                            className={`shrink-0 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                              activeChip
+                                ? 'border-emerald-500/70 bg-emerald-500/15 text-emerald-200'
+                                : 'border-slate-800 bg-[#121820] text-slate-400 hover:text-slate-200'
+                            }`}
+                          >
+                            {chip.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-slate-800/60">
+                    <span className="text-[11px] font-medium text-slate-400 shrink-0 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <span>توهج النص المظلل (Soft Glow):</span>
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onUpdateSettings({
+                            highlightSoftGlow: !settings.highlightSoftGlow,
+                          })
+                        }
+                        className={`rounded-md border px-2.5 py-1 text-[11px] font-medium transition-colors cursor-pointer ${
+                          settings.highlightSoftGlow
+                            ? 'border-amber-400/65 bg-amber-400/15 text-amber-200'
+                            : 'border-slate-800 bg-[#121820] text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        {settings.highlightSoftGlow ? 'توهج ناعم: مُفعّل' : 'توهج ناعم: مُعطّل'}
+                      </button>
+                      {settings.highlightSoftGlow && (
+                        <button
+                          type="button"
+                          onClick={() => setActiveTab('typography')}
+                          className="rounded-md border border-slate-800 bg-[#121820] px-2 py-1 text-[11px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
+                        >
+                          ضبط الشدة ({Math.round(settings.highlightGlowIntensity * 100)}%)
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Audio & Scrubber Transport Controls */}
               <div className="mt-4 space-y-3">
@@ -2352,6 +2743,14 @@ export function StudioWorkspace({
                 )}
               </div>
             </div>
+
+            {!isReadingMode && (
+              <SavedReelsLibrary
+                surahs={surahs}
+                settings={settings}
+                onLoadSavedSettings={onUpdateSettings}
+              />
+            )}
           </div>
         </div>
       </div>

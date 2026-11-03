@@ -4,6 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Modality } from '@google/genai';
 import { WebSocketServer, WebSocket } from 'ws';
+import { type AuthRequest, requireAuth } from './src/middleware/auth.ts';
+import { getOrCreateUser } from './src/db/users.ts';
+import {
+  createSavedReelForUser,
+  deleteSavedReelForUser,
+  getOrInitPlatformMetrics,
+  listSavedReelsForUser,
+} from './src/db/reels.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -207,6 +215,189 @@ async function startServer() {
     } catch (err) {
       console.error('Audio proxy error:', err);
       res.status(502).json({ error: 'Failed to fetch upstream recitation audio' });
+    }
+  });
+
+  // Authenticated User Profile Synchronization & Personal Saved Reels API
+  app.post('/api/users/sync', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const decoded = req.user;
+      if (!decoded?.uid || !decoded.email) {
+        res.status(400).json({ error: 'بيانات الحساب غير مكتملة.' });
+        return;
+      }
+
+      const syncedUser = await getOrCreateUser({
+        uid: decoded.uid,
+        email: decoded.email,
+        displayName: typeof decoded.name === 'string' ? decoded.name : null,
+        emailVerified: Boolean(decoded.email_verified),
+      });
+
+      res.json({
+        user: {
+          uid: syncedUser.uid,
+          email: syncedUser.email,
+          displayName: syncedUser.displayName,
+          role: syncedUser.role,
+        },
+      });
+    } catch (error) {
+      console.error('Failed to sync user:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error ? error.message : 'تعذر مزامنة الحساب حالياً.',
+      });
+    }
+  });
+
+  app.get('/api/saved-reels', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const decoded = req.user;
+      if (!decoded?.uid || !decoded.email) {
+        res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً.' });
+        return;
+      }
+
+      await getOrCreateUser({
+        uid: decoded.uid,
+        email: decoded.email,
+        displayName: typeof decoded.name === 'string' ? decoded.name : null,
+        emailVerified: Boolean(decoded.email_verified),
+      });
+
+      const items = await listSavedReelsForUser(decoded.uid);
+      res.json({ items });
+    } catch (error) {
+      console.error('Failed to fetch saved reels:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : 'تعذر تحميل مقاطعك المحفوظة حالياً.',
+      });
+    }
+  });
+
+  app.post('/api/saved-reels', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const decoded = req.user;
+      if (!decoded?.uid || !decoded.email) {
+        res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً.' });
+        return;
+      }
+
+      await getOrCreateUser({
+        uid: decoded.uid,
+        email: decoded.email,
+        displayName: typeof decoded.name === 'string' ? decoded.name : null,
+        emailVerified: Boolean(decoded.email_verified),
+      });
+
+      const body = req.body || {};
+      const surahId = Math.max(1, Math.min(114, Math.round(Number(body.surahId) || 1)));
+      const fromAyah = Math.max(1, Math.min(286, Math.round(Number(body.fromAyah) || 1)));
+      const toAyah = Math.max(
+        fromAyah,
+        Math.min(286, fromAyah + 29, Math.round(Number(body.toAyah) || fromAyah))
+      );
+
+      const titleArabic =
+        typeof body.titleArabic === 'string' && body.titleArabic.trim().length > 0
+          ? body.titleArabic.trim().slice(0, 100)
+          : `مقطع سورة رقم ${surahId} (${fromAyah}–${toAyah})`;
+
+      const reciterId =
+        typeof body.reciterId === 'string' && body.reciterId.trim()
+          ? body.reciterId.trim().slice(0, 60)
+          : 'alafasy';
+      const backgroundId =
+        typeof body.backgroundId === 'string' && body.backgroundId.trim()
+          ? body.backgroundId.trim().slice(0, 60)
+          : 'starry_night';
+      const translationId =
+        typeof body.translationId === 'string' && body.translationId.trim()
+          ? body.translationId.trim().slice(0, 40)
+          : 'en_clear';
+      const aspectRatio =
+        typeof body.aspectRatio === 'string' && body.aspectRatio.trim()
+          ? body.aspectRatio.trim().slice(0, 16)
+          : '9:16';
+      const sadaqahText =
+        typeof body.sadaqahText === 'string'
+          ? body.sadaqahText.trim().slice(0, 120)
+          : '';
+      const settingsJson =
+        typeof body.settingsJson === 'string' && body.settingsJson.length <= 8000
+          ? body.settingsJson
+          : '{}';
+
+      const created = await createSavedReelForUser({
+        userUid: decoded.uid,
+        titleArabic,
+        surahId,
+        fromAyah,
+        toAyah,
+        reciterId,
+        backgroundId,
+        translationId,
+        aspectRatio,
+        sadaqahText,
+        settingsJson,
+      });
+
+      res.status(201).json({ item: created });
+    } catch (error) {
+      console.error('Failed to save reel:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : 'تعذر حفظ المقطع في مكتبتك حالياً.',
+      });
+    }
+  });
+
+  app.delete('/api/saved-reels/:id', requireAuth, async (req: AuthRequest, res) => {
+    try {
+      const decoded = req.user;
+      if (!decoded?.uid) {
+        res.status(401).json({ error: 'يرجى تسجيل الدخول أولاً.' });
+        return;
+      }
+
+      const reelId = Number(req.params.id);
+      if (!Number.isInteger(reelId) || reelId <= 0) {
+        res.status(400).json({ error: 'معرّف المقطع غير صالح.' });
+        return;
+      }
+
+      const removed = await deleteSavedReelForUser(reelId, decoded.uid);
+      if (!removed) {
+        res.status(404).json({ error: 'المقطع غير موجود في مكتبتك.' });
+        return;
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Failed to delete saved reel:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error ? error.message : 'تعذر حذف المقطع المحفوظ.',
+      });
+    }
+  });
+
+  app.get('/api/platform-metrics', async (_req, res) => {
+    try {
+      const metrics = await getOrInitPlatformMetrics();
+      res.json({ metrics });
+    } catch (error) {
+      console.error('Failed to load platform metrics:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error ? error.message : 'تعذر تحميل الإحصائيات.',
+      });
     }
   });
 

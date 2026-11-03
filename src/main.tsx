@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { AuthProvider } from './context/AuthContext.tsx';
 import './index.css';
 
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
@@ -15,6 +16,8 @@ if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
 
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>
-    <App />
+    <AuthProvider>
+      <App />
+    </AuthProvider>
   </ErrorBoundary>
 );
