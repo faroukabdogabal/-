@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
   Check,
+  Clock,
   Copy,
   Download,
   FileAudio,
@@ -11,11 +12,13 @@ import {
   Minimize2,
   Pause,
   Play,
+  QrCode,
   RefreshCw,
   RotateCcw,
   Search,
   Share2,
   Sliders,
+  Sparkles,
   Type,
   Volume2,
   VolumeX,
@@ -34,6 +37,7 @@ import {
   getTargetDimensions,
   LoadedVisualAssets,
   renderReelFrame,
+  resolveStudioQrUrl,
 } from '../services/canvasRenderer';
 import {
   exportAudioWav,
@@ -89,6 +93,16 @@ function formatSeconds(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function formatPreciseSeconds(sec: number): string {
+  if (!Number.isFinite(sec) || sec <= 0) return '00:00.0';
+  const totalTenths = Math.round(sec * 10);
+  const tenths = totalTenths % 10;
+  const wholeSecs = Math.floor(totalTenths / 10);
+  const m = Math.floor(wholeSecs / 60);
+  const s = wholeSecs % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${tenths}`;
 }
 
 export function StudioWorkspace({
@@ -162,8 +176,14 @@ export function StudioWorkspace({
   const currentTimeRef = useRef<number>(0);
   const hasInteractedPlayRef = useRef<boolean>(false);
 
-  // Refs for smooth zero-thrash 60fps Canvas preview loop
+  // Refs for smooth zero-thrash 60fps Canvas preview loop & precision countdown bar
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const topProgressFillRef = useRef<SVGRectElement | null>(null);
+  const topProgressPlayheadRef = useRef<SVGRectElement | null>(null);
+  const remainingTimeTextRef = useRef<HTMLSpanElement | null>(null);
+  const elapsedTotalTextRef = useRef<HTMLSpanElement | null>(null);
+  const activeAyahCountdownRef = useRef<HTMLSpanElement | null>(null);
+  const isScrubbingTopBarRef = useRef<boolean>(false);
   const [loadedBgImg, setLoadedBgImg] = useState<HTMLImageElement | null>(null);
   const customVideoRef = useRef<HTMLVideoElement | null>(null);
   const [brokenThumbs, setBrokenThumbs] = useState<Record<string, boolean>>({});
@@ -467,6 +487,53 @@ export function StudioWorkspace({
             isReadingMode: isReadingModeRef.current,
             readingFontBoost: readingFontBoostRef.current,
           });
+
+          // Synchronize top visual countdown progress bar & sub-second timer at 60fps
+          const totalDur = activeReelData?.totalDurationSec || 0;
+          const clampedActive =
+            totalDur > 0 ? Math.max(0, Math.min(activeTime, totalDur)) : 0;
+          const remainingSec = Math.max(0, totalDur - clampedActive);
+          const progressRatio = totalDur > 0 ? clampedActive / totalDur : 0;
+          const fillW = progressRatio * 1000;
+          const fillX = 1000 - fillW;
+
+          if (topProgressFillRef.current) {
+            topProgressFillRef.current.setAttribute('x', fillX.toFixed(2));
+            topProgressFillRef.current.setAttribute('width', fillW.toFixed(2));
+          }
+          if (topProgressPlayheadRef.current) {
+            const headX = Math.max(0, Math.min(996, fillX - 2));
+            topProgressPlayheadRef.current.setAttribute('x', headX.toFixed(2));
+            topProgressPlayheadRef.current.setAttribute(
+              'opacity',
+              totalDur > 0 ? '1' : '0'
+            );
+          }
+          if (remainingTimeTextRef.current) {
+            remainingTimeTextRef.current.textContent =
+              totalDur > 0 && remainingSec > 0.04
+                ? `-${formatPreciseSeconds(remainingSec)}`
+                : '00:00.0';
+          }
+          if (elapsedTotalTextRef.current) {
+            elapsedTotalTextRef.current.textContent = `${formatPreciseSeconds(
+              clampedActive
+            )} / ${formatPreciseSeconds(totalDur)}`;
+          }
+          if (activeAyahCountdownRef.current) {
+            if (activeReelData && activeReelData.chunks.length > 0) {
+              const currentChunk =
+                activeReelData.chunks.find(
+                  (c) => clampedActive >= c.startSec && clampedActive < c.endSec
+                ) || activeReelData.chunks[activeReelData.chunks.length - 1];
+              const ayahRem = Math.max(0, currentChunk.endSec - clampedActive);
+              activeAyahCountdownRef.current.textContent = `آية ${
+                currentChunk.ayahNumber
+              } · متبقٍ ${ayahRem.toFixed(1)}ث`;
+            } else {
+              activeAyahCountdownRef.current.textContent = '';
+            }
+          }
         }
       }
       rafId = requestAnimationFrame(renderLoop);
@@ -1097,16 +1164,26 @@ export function StudioWorkspace({
                         مكتبة الخلفيات الهادئة أو رفع خلفية خاصة
                       </label>
 
-                      <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0">
-                        <ImagePlus className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>رفع صورة أو فيديو من جهازك</span>
-                        <input
-                          type="file"
-                          accept="image/*,video/mp4,video/webm"
-                          onChange={handleCustomFileUpload}
-                          className="hidden"
-                        />
-                      </label>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <a
+                          href="#ai-suite"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 transition-colors whitespace-nowrap shrink-0"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>توليد خلفية بالذكاء الاصطناعي / 3D</span>
+                        </a>
+
+                        <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0">
+                          <ImagePlus className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>رفع صورة أو فيديو من جهازك</span>
+                          <input
+                            type="file"
+                            accept="image/*,video/mp4,video/webm"
+                            onChange={handleCustomFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
                     </div>
 
                     {settings.customBgType !== 'none' && (
@@ -1480,7 +1557,7 @@ export function StudioWorkspace({
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
                       <label className="flex items-center justify-between rounded-lg border border-slate-800 bg-[#0E131A] px-3 py-2 text-xs text-slate-300 cursor-pointer">
                         <span>اسم السورة أعلى المقطع</span>
                         <input
@@ -1515,6 +1592,22 @@ export function StudioWorkspace({
                           onChange={(e) =>
                             onUpdateSettings({
                               showProgressBar: e.target.checked,
+                            })
+                          }
+                          className="h-3.5 w-3.5 accent-emerald-400"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between rounded-lg border border-emerald-500/40 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-200 cursor-pointer">
+                        <span className="inline-flex items-center gap-1.5">
+                          <QrCode className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                          <span>باركود الصفحة بالجنب الأيمن</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={settings.showPageQrCode}
+                          onChange={(e) =>
+                            onUpdateSettings({
+                              showPageQrCode: e.target.checked,
                             })
                           }
                           className="h-3.5 w-3.5 accent-emerald-400"
@@ -1585,6 +1678,128 @@ export function StudioWorkspace({
                           className="w-full rounded-lg border border-slate-800 bg-[#0B0F14]/70 px-4 py-2.5 text-sm text-slate-300 focus:outline-none"
                         />
                       </>
+                    )}
+                  </div>
+
+                  {/* Right-Side Page QR Code Controls */}
+                  <div className="pt-4 border-t border-slate-800/70 space-y-3.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
+                          <QrCode className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>باركود رابط الصفحة في الجنب الأيمن للفيديو</span>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                          يُطبع تلقائياً بحجم صغير وواضح في الجنب الأيمن لكل فيديو أو بطاقة يتم إنشاؤها ونشرها ليسهل على المشاهدين مسحه والوصول المباشر للصفحة.
+                        </p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-[#0E131A] px-3 py-1.5 text-xs font-semibold text-slate-200 cursor-pointer shrink-0">
+                        <span>{settings.showPageQrCode ? 'مُفعّل' : 'مخفي'}</span>
+                        <input
+                          type="checkbox"
+                          checked={settings.showPageQrCode}
+                          onChange={(e) =>
+                            onUpdateSettings({ showPageQrCode: e.target.checked })
+                          }
+                          className="h-4 w-4 accent-emerald-400"
+                        />
+                      </label>
+                    </div>
+
+                    {settings.showPageQrCode && (
+                      <div className="rounded-xl border border-slate-800 bg-[#0E131A] p-3.5 space-y-3">
+                        <div>
+                          <span className="block text-xs font-medium text-slate-300 mb-2">
+                            موضع الباركود في الجنب الأيمن للفيديو:
+                          </span>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(
+                              [
+                                {
+                                  id: 'bottom-right',
+                                  label: 'أسفل اليمين',
+                                },
+                                {
+                                  id: 'middle-right',
+                                  label: 'وسط اليمين',
+                                },
+                                {
+                                  id: 'top-right',
+                                  label: 'أعلى اليمين',
+                                },
+                              ] as const
+                            ).map((pos) => {
+                              const active = settings.qrCodePosition === pos.id;
+                              return (
+                                <button
+                                  key={pos.id}
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateSettings({ qrCodePosition: pos.id })
+                                  }
+                                  className={`rounded-lg border px-2.5 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                                    active
+                                      ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200'
+                                      : 'border-slate-800 bg-[#0B0F14] text-slate-400 hover:text-slate-200'
+                                  }`}
+                                >
+                                  {pos.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="block text-xs font-medium text-slate-300 mb-2">
+                            الرابط المدمج داخل الباركود:
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {(
+                              [
+                                {
+                                  id: 'page',
+                                  title: 'رابط الصفحة الرئيسية (موصى به)',
+                                  desc: 'أوضح وأسرع في المسح بكاميرا الهاتف',
+                                },
+                                {
+                                  id: 'reel',
+                                  title: 'رابط هذا المقطع القرآني',
+                                  desc: 'يفتح نفس السورة والآيات والقارئ مباشرة',
+                                },
+                              ] as const
+                            ).map((mode) => {
+                              const active = settings.qrCodeLinkMode === mode.id;
+                              return (
+                                <button
+                                  key={mode.id}
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateSettings({ qrCodeLinkMode: mode.id })
+                                  }
+                                  className={`rounded-lg border p-2.5 text-right transition-colors cursor-pointer ${
+                                    active
+                                      ? 'border-emerald-500/70 bg-emerald-500/10 text-emerald-200'
+                                      : 'border-slate-800 bg-[#0B0F14] text-slate-300 hover:border-slate-700'
+                                  }`}
+                                >
+                                  <div className="text-xs font-semibold">{mode.title}</div>
+                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                    {mode.desc}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-[#0B0F14] px-3 py-2 text-[11px] text-slate-400">
+                          <span className="shrink-0 text-slate-500">الرابط المشفّر:</span>
+                          <span dir="ltr" className="font-mono truncate text-emerald-300/90">
+                            {resolveStudioQrUrl(settings)}
+                          </span>
+                        </div>
+                      </div>
                     )}
                   </div>
 
@@ -1715,6 +1930,172 @@ export function StudioWorkspace({
                   </button>
                 </div>
               )}
+
+              {/* Precision Visual Countdown Timer & Interactive Verse-Marked Progress Bar above Video Player */}
+              <div className="mb-3 rounded-lg border border-slate-800/85 bg-[#0B0F14] px-3 py-2.5">
+                <div className="flex items-center justify-between gap-2 text-xs mb-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Clock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span className="text-slate-300 font-medium whitespace-nowrap">
+                      الوقت المتبقي:
+                    </span>
+                    <span
+                      dir="ltr"
+                      ref={remainingTimeTextRef}
+                      className="font-mono tabular-nums font-bold text-emerald-300 whitespace-nowrap"
+                    >
+                      {reelData && reelData.totalDurationSec - currentTime > 0.04
+                        ? `-${formatPreciseSeconds(
+                            Math.max(0, reelData.totalDurationSec - currentTime)
+                          )}`
+                        : '00:00.0'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-400 shrink-0">
+                    <span
+                      ref={activeAyahCountdownRef}
+                      className="hidden sm:inline text-slate-300 tabular-nums whitespace-nowrap"
+                    />
+                    {reelData && reelData.chunks.length > 0 && (
+                      <span className="hidden sm:inline text-slate-600" aria-hidden="true">
+                        ·
+                      </span>
+                    )}
+                    <span
+                      dir="ltr"
+                      ref={elapsedTotalTextRef}
+                      className="font-mono tabular-nums text-slate-400 whitespace-nowrap"
+                    >
+                      {`${formatPreciseSeconds(currentTime)} / ${formatPreciseSeconds(
+                        reelData?.totalDurationSec || 0
+                      )}`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Clickable & Draggable RTL Visual Countdown Track with Ayah Boundary Ticks */}
+                <div
+                  role="slider"
+                  tabIndex={reelData && !isLoadingReel ? 0 : -1}
+                  aria-label="المؤقت البصري والوقت المتبقي للمقطع القرآني"
+                  aria-valuemin={0}
+                  aria-valuemax={Math.round((reelData?.totalDurationSec || 0) * 10) / 10}
+                  aria-valuenow={Math.round(currentTime * 10) / 10}
+                  aria-valuetext={
+                    reelData
+                      ? `متبقٍ ${formatPreciseSeconds(
+                          Math.max(0, reelData.totalDurationSec - currentTime)
+                        )} من إجمالي ${formatPreciseSeconds(reelData.totalDurationSec)}`
+                      : '00:00.0'
+                  }
+                  onKeyDown={(e) => {
+                    if (!reelData || isLoadingReel) return;
+                    if (e.key === 'ArrowLeft') {
+                      e.preventDefault();
+                      handleSeek(currentTimeRef.current + 0.5);
+                    } else if (e.key === 'ArrowRight') {
+                      e.preventDefault();
+                      handleSeek(currentTimeRef.current - 0.5);
+                    }
+                  }}
+                  onPointerDown={(e) => {
+                    if (!reelData || isLoadingReel) return;
+                    isScrubbingTopBarRef.current = true;
+                    e.currentTarget.setPointerCapture(e.pointerId);
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    if (rect.width > 0) {
+                      const rtlRatio = Math.max(
+                        0,
+                        Math.min(1, (rect.right - e.clientX) / rect.width)
+                      );
+                      handleSeek(rtlRatio * reelData.totalDurationSec);
+                    }
+                  }}
+                  onPointerMove={(e) => {
+                    if (!isScrubbingTopBarRef.current || !reelData || isLoadingReel) {
+                      return;
+                    }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    if (rect.width > 0) {
+                      const rtlRatio = Math.max(
+                        0,
+                        Math.min(1, (rect.right - e.clientX) / rect.width)
+                      );
+                      handleSeek(rtlRatio * reelData.totalDurationSec);
+                    }
+                  }}
+                  onPointerUp={(e) => {
+                    if (isScrubbingTopBarRef.current) {
+                      isScrubbingTopBarRef.current = false;
+                      try {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                      } catch {
+                        // Ignore if pointer already released
+                      }
+                    }
+                  }}
+                  onPointerCancel={() => {
+                    isScrubbingTopBarRef.current = false;
+                  }}
+                  className={`group relative py-1.5 select-none touch-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 rounded ${
+                    reelData && !isLoadingReel
+                      ? 'cursor-pointer'
+                      : 'opacity-50 pointer-events-none'
+                  }`}
+                >
+                  <svg
+                    viewBox="0 0 1000 10"
+                    preserveAspectRatio="none"
+                    className="h-2.5 w-full rounded-full bg-slate-800/95 overflow-hidden block border border-slate-700/60"
+                    aria-hidden="true"
+                  >
+                    {/* Remaining span background */}
+                    <rect x="0" y="0" width="1000" height="10" fill="#16202c" />
+
+                    {/* Elapsed progress fill (flows RTL from x=1000 towards x=0) */}
+                    <rect
+                      ref={topProgressFillRef}
+                      x="1000"
+                      y="0"
+                      width="0"
+                      height="10"
+                      fill="#34d399"
+                    />
+
+                    {/* Synchronized Ayah / Screen boundary ticks for precision clip timing */}
+                    {reelData &&
+                      reelData.totalDurationSec > 0 &&
+                      reelData.chunks.slice(1).map((chunk) => {
+                        const tickX =
+                          1000 -
+                          (chunk.startSec / reelData.totalDurationSec) * 1000;
+                        return (
+                          <rect
+                            key={chunk.id}
+                            x={tickX - 1}
+                            y="0"
+                            width="2"
+                            height="10"
+                            fill="#0B0F14"
+                            opacity="0.85"
+                          />
+                        );
+                      })}
+
+                    {/* Active Playhead Indicator */}
+                    <rect
+                      ref={topProgressPlayheadRef}
+                      x="996"
+                      y="0"
+                      width="4"
+                      height="10"
+                      fill="#ecfdf5"
+                      opacity="0"
+                    />
+                  </svg>
+                </div>
+              </div>
 
               <div className="relative mx-auto flex items-center justify-center rounded-lg bg-[#070A0E] border border-slate-800/80 overflow-hidden p-2 sm:p-3">
                 <div

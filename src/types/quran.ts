@@ -111,6 +111,9 @@ export interface StudioSettings {
   showSurahHeader: boolean;
   showReciterFooter: boolean;
   showProgressBar: boolean;
+  showPageQrCode: boolean;
+  qrCodePosition: 'bottom-right' | 'middle-right' | 'top-right';
+  qrCodeLinkMode: 'page' | 'reel';
   sadaqahText: string;
 }
 

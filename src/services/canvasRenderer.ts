@@ -1,3 +1,4 @@
+import QRCode from 'qrcode';
 import { BACKGROUNDS, QURAN_FONTS, TRANSLATIONS } from '../data/quranCatalog';
 import {
   ExportResolution,
@@ -9,6 +10,182 @@ import {
   WordRevealMode,
   WordTiming,
 } from '../types/quran';
+
+interface CachedQrMatrix {
+  size: number;
+  data: Uint8Array;
+}
+
+const qrMatrixCache = new Map<string, CachedQrMatrix>();
+
+function getOrCreateQrMatrix(url: string): CachedQrMatrix | null {
+  const cleanUrl = url.trim();
+  if (!cleanUrl) return null;
+  const cached = qrMatrixCache.get(cleanUrl);
+  if (cached) return cached;
+
+  try {
+    const createFn =
+      QRCode.create ||
+      (QRCode as unknown as { default?: { create?: typeof QRCode.create } }).default?.create;
+    if (!createFn) return null;
+    const qr = createFn(cleanUrl, { errorCorrectionLevel: 'L' });
+    const entry: CachedQrMatrix = {
+      size: qr.modules.size,
+      data: qr.modules.data,
+    };
+    if (qrMatrixCache.size >= 32) {
+      const oldestKey = qrMatrixCache.keys().next().value;
+      if (oldestKey) qrMatrixCache.delete(oldestKey);
+    }
+    qrMatrixCache.set(cleanUrl, entry);
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveStudioQrUrl(settings: StudioSettings): string {
+  if (typeof window === 'undefined') {
+    return 'https://quran-reels.app';
+  }
+  const basePage =
+    (window.location.origin + window.location.pathname).replace(/\/+$/, '') ||
+    window.location.origin;
+
+  if (settings.qrCodeLinkMode === 'reel') {
+    const u = new URL(window.location.origin + window.location.pathname);
+    u.searchParams.set('surah', String(settings.surahId));
+    u.searchParams.set('from', String(settings.fromAyah));
+    u.searchParams.set('to', String(settings.toAyah));
+    u.searchParams.set('reciter', settings.reciterId);
+    return u.toString();
+  }
+
+  return basePage;
+}
+
+function fillRoundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  const radius = Math.max(0, Math.min(r, w / 2, h / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
+}
+
+function getQrBadgeMetrics(settings: StudioSettings, baseUnit: number) {
+  const url = resolveStudioQrUrl(settings);
+  const matrix = getOrCreateQrMatrix(url);
+  if (!matrix) return null;
+
+  const quietModules = 2;
+  const totalModules = matrix.size + quietModules * 2;
+  // Crisp integer module pixel size so every QR module stays razor-sharp in H.264 MP4
+  const targetQrPx = Math.round(72 * baseUnit);
+  const modulePx = Math.max(2, Math.round(targetQrPx / totalModules));
+  const qrBoxPx = totalModules * modulePx;
+  const padPx = Math.max(4, Math.round(5 * baseUnit));
+  const labelHeightPx = Math.max(13, Math.round(15 * baseUnit));
+  const cardW = qrBoxPx + padPx * 2;
+  const cardH = qrBoxPx + padPx * 2 + labelHeightPx;
+
+  return {
+    matrix,
+    quietModules,
+    modulePx,
+    qrBoxPx,
+    padPx,
+    labelHeightPx,
+    cardW,
+    cardH,
+  };
+}
+
+function drawRightSidePageQrBadge(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  baseUnit: number,
+  settings: StudioSettings
+) {
+  const metrics = getQrBadgeMetrics(settings, baseUnit);
+  if (!metrics) return;
+
+  const { matrix, quietModules, modulePx, qrBoxPx, padPx, cardW, cardH } = metrics;
+  const rightMargin = Math.round(16 * baseUnit);
+  const cardX = w - rightMargin - cardW;
+
+  let cardY = h - Math.round(20 * baseUnit) - cardH;
+  if (settings.qrCodePosition === 'top-right') {
+    cardY = Math.round(20 * baseUnit);
+  } else if (settings.qrCodePosition === 'middle-right') {
+    cardY = Math.round(h * 0.5 - cardH * 0.5);
+  }
+
+  ctx.save();
+
+  // Subtle dark slate badge frame with warm gold hairline border
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+  ctx.shadowBlur = Math.round(10 * baseUnit);
+  ctx.fillStyle = 'rgba(8, 13, 21, 0.84)';
+  fillRoundedRect(ctx, cardX, cardY, cardW, cardH, Math.round(9 * baseUnit));
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = 'rgba(243, 207, 122, 0.42)';
+  ctx.lineWidth = Math.max(1, 1.1 * baseUnit);
+  fillRoundedRect(ctx, cardX, cardY, cardW, cardH, Math.round(9 * baseUnit));
+  ctx.stroke();
+
+  // Pure white quiet-zone square for reliable phone camera scanning
+  const qrX = cardX + padPx;
+  const qrY = cardY + padPx;
+  ctx.fillStyle = '#FFFFFF';
+  fillRoundedRect(ctx, qrX, qrY, qrBoxPx, qrBoxPx, Math.round(5 * baseUnit));
+  ctx.fill();
+
+  // Crisp integer-aligned dark QR modules
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = '#070B12';
+  const modulesStartX = qrX + quietModules * modulePx;
+  const modulesStartY = qrY + quietModules * modulePx;
+
+  for (let row = 0; row < matrix.size; row++) {
+    const rowOffset = row * matrix.size;
+    const py = modulesStartY + row * modulePx;
+    for (let col = 0; col < matrix.size; col++) {
+      if (matrix.data[rowOffset + col]) {
+        ctx.fillRect(modulesStartX + col * modulePx, py, modulePx, modulePx);
+      }
+    }
+  }
+
+  // Compact Arabic micro-label underneath QR square
+  const captionPx = Math.max(9, Math.round(10.5 * baseUnit));
+  ctx.font = `600 ${captionPx}px "IBM Plex Sans Arabic", system-ui, sans-serif`;
+  ctx.direction = 'rtl';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = 'rgba(243, 207, 122, 0.95)';
+  const captionY = qrY + qrBoxPx + (cardH - padPx - qrBoxPx) * 0.52;
+  ctx.fillText(
+    settings.qrCodeLinkMode === 'reel' ? 'امسح للمقطع' : 'امسح للصفحة',
+    cardX + cardW * 0.5,
+    captionY
+  );
+
+  ctx.restore();
+}
 
 export interface RenderDimensions {
   width: number;
@@ -364,9 +541,17 @@ export function renderReelFrame(params: {
   drawParticles(ctx, w, h, timeSec, settings.particleEffect);
 
   if (!reelData) {
+    if (settings.showPageQrCode && !isReadingMode) {
+      drawRightSidePageQrBadge(ctx, w, h, baseUnit, settings);
+    }
     ctx.restore();
     return;
   }
+
+  const qrMetrics =
+    settings.showPageQrCode && !isReadingMode
+      ? getQrBadgeMetrics(settings, baseUnit)
+      : null;
 
   const fontChoice = QURAN_FONTS.find((f) => f.id === settings.fontId) || QURAN_FONTS[0];
   const translationMeta =
@@ -406,7 +591,23 @@ export function renderReelFrame(params: {
   if (activeChunk) {
     ctx.save();
 
-    const maxTextWidth = isReadingMode ? w * 0.89 : w * 0.85;
+    const middleRightClearance =
+      qrMetrics && settings.qrCodePosition === 'middle-right'
+        ? qrMetrics.cardW + 24 * baseUnit
+        : 0;
+    const verseCenterX =
+      middleRightClearance > 0 ? (w - middleRightClearance) * 0.5 + 8 * baseUnit : w * 0.5;
+    const maxTextWidth = isReadingMode
+      ? w * 0.89
+      : middleRightClearance > 0
+      ? Math.max(w * 0.58, w - middleRightClearance - 42 * baseUnit)
+      : w * 0.85;
+    const maxTransWidth = isReadingMode
+      ? w * 0.86
+      : middleRightClearance > 0
+      ? Math.max(w * 0.56, w - middleRightClearance - 48 * baseUnit)
+      : w * 0.82;
+
     const wordCount = activeChunk.words.length;
     const autoSizeFactor =
       wordCount > 24 ? 0.72 : wordCount > 16 ? 0.84 : wordCount > 10 ? 0.94 : 1.06;
@@ -428,7 +629,7 @@ export function renderReelFrame(params: {
       fullTransLines = wrapPlainTextLines(
         ctx,
         activeChunk.translationText,
-        isReadingMode ? w * 0.86 : w * 0.82
+        maxTransWidth
       );
       ctx.restore();
     }
@@ -495,7 +696,7 @@ export function renderReelFrame(params: {
         transLines = wrapPlainTextLines(
           ctx,
           visibleTranslation,
-          isReadingMode ? w * 0.86 : w * 0.82
+          maxTransWidth
         );
         ctx.restore();
 
@@ -506,6 +707,7 @@ export function renderReelFrame(params: {
         drawArabicWordLines({
           ctx,
           w,
+          centerX: verseCenterX,
           wordLines,
           startY,
           arabicPx,
@@ -528,7 +730,7 @@ export function renderReelFrame(params: {
         ctx.shadowBlur = 8 * baseUnit;
 
         transLines.forEach((tLine, tIdx) => {
-          ctx.fillText(tLine, w * 0.5, transStartY + tIdx * transLineHeight);
+          ctx.fillText(tLine, verseCenterX, transStartY + tIdx * transLineHeight);
         });
         ctx.restore();
       } else {
@@ -539,6 +741,7 @@ export function renderReelFrame(params: {
         drawArabicWordLines({
           ctx,
           w,
+          centerX: verseCenterX,
           wordLines,
           startY,
           arabicPx,
@@ -558,6 +761,7 @@ export function renderReelFrame(params: {
       drawArabicWordLines({
         ctx,
         w,
+        centerX: verseCenterX,
         wordLines,
         startY,
         arabicPx,
@@ -576,6 +780,15 @@ export function renderReelFrame(params: {
 
   // 6. Bottom Reciter Attribution & Sadaqah Jariyah Dedication
   const footerBaseY = isReadingMode ? h * 0.905 : h * 0.885;
+  const bottomRightReserve =
+    qrMetrics && settings.qrCodePosition === 'bottom-right'
+      ? qrMetrics.cardW + 26 * baseUnit
+      : 0;
+  const maxFooterLineW =
+    bottomRightReserve > 0
+      ? Math.max(w * 0.48, w - bottomRightReserve - 24 * baseUnit)
+      : w * 0.88;
+
   ctx.save();
   ctx.textAlign = 'center';
   ctx.direction = 'rtl';
@@ -590,11 +803,13 @@ export function renderReelFrame(params: {
       reelData.fromAyah === reelData.toAyah
         ? `الآية ${reelData.fromAyah}`
         : `الآيات ${reelData.fromAyah}–${reelData.toAyah}`;
-    ctx.fillText(
-      `القارئ ${reelData.reciter.nameArabic} · ${ayahRangeLabel}`,
-      w * 0.5,
-      footerBaseY
-    );
+    const reciterLine = `القارئ ${reelData.reciter.nameArabic} · ${ayahRangeLabel}`;
+    const measuredW = Math.min(maxFooterLineW, ctx.measureText(reciterLine).width);
+    const lineCenterX =
+      bottomRightReserve > 0
+        ? Math.min(w * 0.5, w - bottomRightReserve - measuredW * 0.5)
+        : w * 0.5;
+    ctx.fillText(reciterLine, lineCenterX, footerBaseY, maxFooterLineW);
   }
 
   const cleanSadaqah = settings.sadaqahText.trim();
@@ -603,11 +818,21 @@ export function renderReelFrame(params: {
     ctx.font = `400 ${sadaqahPx}px "IBM Plex Sans Arabic", sans-serif`;
     ctx.fillStyle = 'rgba(243, 207, 122, 0.86)';
     const yPos = settings.showReciterFooter ? footerBaseY + 26 * baseUnit : footerBaseY;
-    ctx.fillText(cleanSadaqah, w * 0.5, yPos);
+    const measuredW = Math.min(maxFooterLineW, ctx.measureText(cleanSadaqah).width);
+    const lineCenterX =
+      bottomRightReserve > 0
+        ? Math.min(w * 0.5, w - bottomRightReserve - measuredW * 0.5)
+        : w * 0.5;
+    ctx.fillText(cleanSadaqah, lineCenterX, yPos, maxFooterLineW);
   }
   ctx.restore();
 
-  // 7. Optional Bottom Progress Line
+  // 7. Right-Side Page QR Code Badge (for easy discovery on published Reels/Shorts)
+  if (settings.showPageQrCode && !isReadingMode) {
+    drawRightSidePageQrBadge(ctx, w, h, baseUnit, settings);
+  }
+
+  // 8. Optional Bottom Progress Line
   if (settings.showProgressBar && reelData.totalDurationSec > 0) {
     const barH = Math.max(3, Math.round(4.5 * baseUnit));
     ctx.fillStyle = 'rgba(255, 255, 255, 0.14)';
@@ -623,6 +848,7 @@ export function renderReelFrame(params: {
 function drawArabicWordLines(params: {
   ctx: CanvasRenderingContext2D;
   w: number;
+  centerX?: number;
   wordLines: WordTiming[][];
   startY: number;
   arabicPx: number;
@@ -637,6 +863,7 @@ function drawArabicWordLines(params: {
   const {
     ctx,
     w,
+    centerX,
     wordLines,
     startY,
     arabicPx,
@@ -648,6 +875,7 @@ function drawArabicWordLines(params: {
     isIdlePreview,
     isReadingMode = false,
   } = params;
+  const lineCenter = typeof centerX === 'number' ? centerX : w * 0.5;
 
   ctx.save();
   ctx.font = `400 ${arabicPx}px ${fontFamily}`;
@@ -665,7 +893,7 @@ function drawArabicWordLines(params: {
       ctx.shadowColor = 'rgba(0, 0, 0, 0.78)';
       ctx.shadowBlur = 12 * baseUnit;
       const lineStr = lineWords.map((lw) => lw.text).join(' ');
-      ctx.fillText(lineStr, w * 0.5, baseLineY);
+      ctx.fillText(lineStr, lineCenter, baseLineY);
       ctx.restore();
       return;
     }
@@ -674,7 +902,7 @@ function drawArabicWordLines(params: {
     const totalLineW =
       widths.reduce((a, b) => a + b, 0) + Math.max(0, lineWords.length - 1) * spaceGap;
 
-    let rightCursor = w * 0.5 + totalLineW * 0.5;
+    let rightCursor = lineCenter + totalLineW * 0.5;
     ctx.textAlign = 'right';
     ctx.direction = 'rtl';
 

@@ -230,5 +230,8 @@ export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
   showSurahHeader: true,
   showReciterFooter: true,
   showProgressBar: true,
+  showPageQrCode: true,
+  qrCodePosition: 'bottom-right',
+  qrCodeLinkMode: 'page',
   sadaqahText: 'صدقة جارية عن عائلة فاروق جبل',
 };

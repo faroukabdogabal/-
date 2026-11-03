@@ -3,6 +3,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { ShieldCheck } from 'lucide-react';
 import { AdminControlModal } from './components/AdminControlModal';
+import { AIStudioSuiteSection } from './components/AIStudioSuiteSection';
 import { FeaturesAndSadaqah } from './components/FeaturesAndSadaqah';
 import { HeroSection } from './components/HeroSection';
 import { IslamicToolsSection } from './components/IslamicToolsSection';
@@ -501,6 +502,15 @@ export default function App() {
     [scrollToStudio, recordReelCreated]
   );
 
+  const handleApplyAIBackground = useCallback(
+    (patch: Partial<StudioSettings>) => {
+      handleUpdateSettings(patch);
+      recordReelCreated();
+      scrollToStudio();
+    },
+    [handleUpdateSettings, recordReelCreated, scrollToStudio]
+  );
+
   const buildShareUrl = useCallback(
     (customOverrides?: Partial<StudioSettings>) => {
       const target = { ...settings, ...customOverrides };
@@ -670,6 +680,12 @@ export default function App() {
           onRecordReelCreated={recordReelCreated}
           onRecordReelExported={recordReelExported}
           onRecordSadaqahShared={recordSadaqahShared}
+        />
+
+        <AIStudioSuiteSection
+          surahs={surahs}
+          onLoadVerseIntoStudio={handleLoadVerseFromTool}
+          onApplyCustomBackground={handleApplyAIBackground}
         />
 
         <IslamicToolsSection
