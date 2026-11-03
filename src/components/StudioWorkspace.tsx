@@ -54,7 +54,6 @@ import {
   ExportSuccessToast,
 } from './ExportSuccessToast';
 import { QuickExportShareFab } from './QuickExportShareFab';
-import { SavedReelsLibrary } from './SavedReelsLibrary';
 import { SocialShareDock } from './SocialShareDock';
 import { PublicStatsData } from '../firebase';
 import {
@@ -858,7 +857,7 @@ export function StudioWorkspace({
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Controls Panel — Hidden during Reading Mode for complete contemplation focus */}
           {!isReadingMode && (
-            <div className="lg:col-span-7 rounded-xl border border-slate-800/90 bg-[#121820] overflow-hidden">
+            <div className="lg:col-span-7 min-w-0 rounded-xl border border-slate-800/90 bg-[#121820] overflow-hidden">
             <div
               role="tablist"
               aria-label="أقسام تخصيص المقطع"
@@ -1199,14 +1198,6 @@ export function StudioWorkspace({
                       </label>
 
                       <div className="flex flex-wrap items-center gap-2">
-                        <a
-                          href="#ai-suite"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/20 transition-colors whitespace-nowrap shrink-0"
-                        >
-                          <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>توليد خلفية بالذكاء الاصطناعي / 3D</span>
-                        </a>
-
                         <label className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-1.5 text-xs font-medium text-slate-200 hover:bg-slate-700 transition-colors cursor-pointer whitespace-nowrap shrink-0">
                           <ImagePlus className="w-3.5 h-3.5 text-emerald-400" />
                           <span>رفع صورة أو فيديو من جهازك</span>
@@ -2176,8 +2167,8 @@ export function StudioWorkspace({
           <div
             className={
               isReadingMode
-                ? 'lg:col-span-12 max-w-5xl mx-auto w-full space-y-4'
-                : 'lg:col-span-5 lg:sticky lg:top-20 space-y-4'
+                ? 'lg:col-span-12 min-w-0 max-w-5xl mx-auto w-full space-y-4'
+                : 'lg:col-span-5 min-w-0 lg:sticky lg:top-20 space-y-4'
             }
           >
             <div
@@ -2689,7 +2680,7 @@ export function StudioWorkspace({
                           type="button"
                           disabled={!reelData || isLoadingReel}
                           onClick={handleExportVideo}
-                          className="w-full flex items-center justify-center gap-2.5 rounded-lg bg-emerald-400 px-5 py-3.5 text-sm sm:text-base font-bold text-slate-950 hover:bg-emerald-300 transition-colors cursor-pointer disabled:opacity-50 whitespace-nowrap"
+                          className="w-full flex items-center justify-center gap-2.5 rounded-lg bg-emerald-400 px-4 sm:px-5 py-3.5 text-xs sm:text-base font-bold text-slate-950 hover:bg-emerald-300 transition-colors cursor-pointer disabled:opacity-50 text-center leading-snug"
                         >
                           <Download className="w-4 h-4 shrink-0" />
                           <span>
@@ -2743,14 +2734,6 @@ export function StudioWorkspace({
                 )}
               </div>
             </div>
-
-            {!isReadingMode && (
-              <SavedReelsLibrary
-                surahs={surahs}
-                settings={settings}
-                onLoadSavedSettings={onUpdateSettings}
-              />
-            )}
           </div>
         </div>
       </div>

@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { User } from 'firebase/auth';
 import {
+  ArrowRight,
   Check,
   Eye,
   EyeOff,
@@ -78,7 +80,25 @@ export function AdminControlModal({
     setStatsForm(publicStats);
   }, [publicStats, isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const isMaster = isVerifiedMasterAdmin(currentUser);
   const selectedNewSurah = surahs.find((s) => s.id === newSurahId) || surahs[0];
@@ -91,9 +111,15 @@ export function AdminControlModal({
     try {
       await signInMasterAdmin();
     } catch (err) {
-      setErrorMsg(
-        err instanceof Error ? err.message : 'تعذر تسجيل الدخول، يرجى المحاولة مرة أخرى'
-      );
+      const rawMsg = err instanceof Error ? err.message : '';
+      if (rawMsg.includes('auth/unauthorized-domain')) {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        setErrorMsg(
+          `هذا النطاق (${host}) غير مضاف بعد ضمن النطاقات المصرّح بها لتسجيل الدخول في إعدادات Firebase (Authentication → Settings → Authorized domains).`
+        );
+      } else {
+        setErrorMsg(rawMsg || 'تعذر تسجيل الدخول، يرجى المحاولة مرة أخرى');
+      }
     } finally {
       setIsSigningIn(false);
     }
@@ -171,23 +197,28 @@ export function AdminControlModal({
     }
   };
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label="لوحة تحكم المسؤول والمدير العام"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-[100] flex items-stretch md:items-center justify-center bg-[#0B0F14] md:bg-black/80 md:backdrop-blur-xs p-0 md:p-4 w-screen max-w-[100vw] h-[100dvh] overflow-hidden"
     >
-      <div className="relative w-full max-w-3xl rounded-2xl border border-slate-800 bg-[#121820] text-slate-100 shadow-2xl my-8 overflow-hidden">
+      <div className="relative flex flex-col w-full h-full max-h-[100dvh] md:h-auto md:max-h-[90vh] md:max-w-3xl rounded-none md:rounded-2xl border-0 md:border md:border-slate-800 bg-[#121820] text-slate-100 shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 bg-[#0E131A] px-6 py-4">
-          <div className="flex items-center gap-2.5">
+        <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-800 bg-[#0E131A] px-4 sm:px-6 py-3.5 pt-[max(0.875rem,env(safe-area-inset-top))]">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-            <div>
-              <h2 className="text-base sm:text-lg font-bold text-slate-50">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-lg font-bold text-slate-50 leading-snug">
                 لوحة الإدارة والنشر والتحكم الحصري — قرآن ريلز
               </h2>
-              <p className="text-xs text-slate-400 font-mono">
+              <p className="text-[11px] sm:text-xs text-slate-400 font-mono truncate">
                 المسؤول والوكيل والمدير الوحيد: {MASTER_ADMIN_EMAIL}
               </p>
             </div>
@@ -197,14 +228,16 @@ export function AdminControlModal({
             type="button"
             onClick={onClose}
             aria-label="إغلاق اللوحة"
-            className="rounded-lg border border-slate-800 p-2 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-700/90 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white active:scale-95 transition-all cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <span className="md:hidden">رجوع</span>
+            <ArrowRight className="w-4 h-4 md:hidden rtl:rotate-180" />
+            <X className="w-4 h-4 hidden md:block" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 max-h-[80vh] overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {/* Case 1: Not signed in */}
           {!currentUser && (
             <div className="py-8 text-center max-w-lg mx-auto space-y-5">
@@ -1012,6 +1045,7 @@ export function AdminControlModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

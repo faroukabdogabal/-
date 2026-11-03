@@ -38,12 +38,6 @@ export function Navbar({
             الاستوديو
           </a>
           <a
-            href="#ai-suite"
-            className="hover:text-slate-100 hover:underline underline-offset-8 transition-colors whitespace-nowrap shrink-0"
-          >
-            الذكاء الاصطناعي
-          </a>
-          <a
             href="#islamic-tools"
             className="hover:text-slate-100 hover:underline underline-offset-8 transition-colors whitespace-nowrap shrink-0"
           >

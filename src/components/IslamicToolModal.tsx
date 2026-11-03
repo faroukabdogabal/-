@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
+  ArrowRight,
   Check,
   Compass,
   Copy,
@@ -278,6 +280,25 @@ export function IslamicToolModal({
       setIsMemPlaying(false);
     };
   }, [toolId]);
+
+  // Lock background page scroll and bind Escape key while any Islamic tool is open
+  useEffect(() => {
+    if (!toolId) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [toolId, onClose]);
 
   const activeCoords = useMemo(() => {
     if (customCoords) return customCoords;
@@ -735,36 +756,43 @@ export function IslamicToolModal({
     [activeCoords.lat, activeCoords.lng]
   );
 
-  if (!toolId || !toolMeta) return null;
+  if (!toolId || !toolMeta || typeof document === 'undefined') return null;
 
-  return (
+  return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label={toolMeta.titleArabic}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+      className="fixed inset-0 z-[100] flex items-stretch md:items-center justify-center bg-[#0B0F14] md:bg-black/80 md:backdrop-blur-xs p-0 md:p-4 w-screen max-w-[100vw] h-[100dvh] overflow-hidden"
     >
-      <div className="relative w-full max-w-3xl rounded-2xl border border-slate-800 bg-[#121820] text-slate-100 shadow-2xl my-6 overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-800 bg-[#0E131A] px-5 sm:px-6 py-4">
-          <div>
-            <h3 className="text-base sm:text-lg font-bold text-slate-50">
+      <div className="relative flex flex-col w-full h-full max-h-[100dvh] md:h-auto md:max-h-[90vh] md:max-w-3xl rounded-none md:rounded-2xl border-0 md:border md:border-slate-800 bg-[#121820] text-slate-100 shadow-2xl overflow-hidden">
+        {/* Header — Full-width sticky mobile app bar on phones */}
+        <div className="shrink-0 flex items-center justify-between gap-3 border-b border-slate-800 bg-[#0E131A] px-4 sm:px-6 py-3.5 pt-[max(0.875rem,env(safe-area-inset-top))]">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-base sm:text-lg font-bold text-slate-50 truncate">
               {toolMeta.titleArabic}
             </h3>
-            <p className="text-xs text-slate-400">{toolMeta.subtitleArabic}</p>
+            <p className="text-xs text-slate-400 truncate">{toolMeta.subtitleArabic}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="إغلاق الأداة"
-            className="rounded-lg border border-slate-800 p-2 text-slate-400 hover:bg-slate-800 hover:text-white cursor-pointer"
+            aria-label="إغلاق الأداة والعودة"
+            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-xl border border-slate-700/90 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white active:scale-95 transition-all cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <span className="md:hidden">رجوع</span>
+            <ArrowRight className="w-4 h-4 md:hidden rtl:rotate-180" />
+            <X className="w-4 h-4 hidden md:block" />
           </button>
         </div>
 
-        {/* Interactive Tool Body */}
-        <div className="p-5 sm:p-6 max-h-[78vh] overflow-y-auto space-y-5">
+        {/* Interactive Tool Body — Full remaining screen height on mobile */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-5">
           {/* 1. AYAT BY TOPIC */}
           {toolId === 'ayat_topic' && (
             <div className="space-y-4">
@@ -1171,7 +1199,7 @@ export function IslamicToolModal({
                   className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] pr-10 pl-4 py-2.5 text-sm text-slate-100"
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-96 overflow-y-auto p-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 md:max-h-96 md:overflow-y-auto p-1">
                 {ASMA_UL_HUSNA_99.filter(
                   (n) =>
                     !namesSearch.trim() ||
@@ -1718,7 +1746,7 @@ export function IslamicToolModal({
                   ))}
                 </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-96 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 md:max-h-96 md:overflow-y-auto">
                 {ISLAMIC_BABY_NAMES.filter(
                   (b) =>
                     (babyGender === 'all' || b.gender === babyGender) &&
@@ -2210,7 +2238,7 @@ export function IslamicToolModal({
                 placeholder="ابحث برمز المادة المضافة (مثال: E120، E471، E441، جيلاتين)..."
                 className="w-full rounded-lg border border-slate-800 bg-[#0B0F14] px-4 py-2.5 text-sm text-slate-100"
               />
-              <div className="space-y-2.5 max-h-96 overflow-y-auto">
+              <div className="space-y-2.5 md:max-h-96 md:overflow-y-auto">
                 {E_NUMBERS_LIST.filter(
                   (e) =>
                     !eNumberQuery.trim() ||
@@ -2325,7 +2353,7 @@ export function IslamicToolModal({
                   {searchingWords ? 'جاري البحث...' : 'بحث'}
                 </button>
               </div>
-              <div className="space-y-2.5 max-h-96 overflow-y-auto">
+              <div className="space-y-2.5 md:max-h-96 md:overflow-y-auto">
                 {wordResults.map((res) => (
                   <div
                     key={res.verseKey}
@@ -2385,7 +2413,7 @@ export function IslamicToolModal({
                 <div className="text-xs text-slate-400 mb-2">
                   علّم السور التي أتم الطفل حفظها في لوحة النجوم ({kidsSurahDone.length} سور):
                 </div>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 max-h-64 overflow-y-auto">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 md:max-h-64 md:overflow-y-auto">
                   {surahs
                     .filter((s) => s.id === 1 || s.id >= 78)
                     .map((s) => {
@@ -2425,6 +2453,7 @@ export function IslamicToolModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

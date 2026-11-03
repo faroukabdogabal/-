@@ -3,7 +3,6 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { ShieldCheck } from 'lucide-react';
 import { AdminControlModal } from './components/AdminControlModal';
-import { AIStudioSuiteSection } from './components/AIStudioSuiteSection';
 import { FeaturesAndSadaqah } from './components/FeaturesAndSadaqah';
 import { HeroSection } from './components/HeroSection';
 import { IslamicToolsSection } from './components/IslamicToolsSection';
@@ -516,15 +515,6 @@ export default function App() {
     [scrollToStudio, recordReelCreated]
   );
 
-  const handleApplyAIBackground = useCallback(
-    (patch: Partial<StudioSettings>) => {
-      handleUpdateSettings(patch);
-      recordReelCreated();
-      scrollToStudio();
-    },
-    [handleUpdateSettings, recordReelCreated, scrollToStudio]
-  );
-
   const buildShareUrl = useCallback(
     (customOverrides?: Partial<StudioSettings>) => {
       const target = { ...settings, ...customOverrides };
@@ -618,7 +608,7 @@ export default function App() {
   // If the sole administrator paused public publishing, show a clean maintenance gate to visitors
   if (!siteConfig.isPublishedLive && !isMasterAdmin) {
     return (
-      <div className="min-h-screen bg-[#0B0F14] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
+      <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0B0F14] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
         <div className="max-w-lg w-full rounded-2xl border border-slate-800 bg-[#121820] p-8 space-y-5">
           <div className="text-sm font-medium text-emerald-400">
             {siteConfig.sadaqahLabel}
@@ -655,7 +645,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F14] text-slate-100 flex flex-col">
+    <div className="min-h-screen w-full max-w-[100vw] overflow-x-hidden bg-[#0B0F14] text-slate-100 flex flex-col">
       {!siteConfig.isPublishedLive && isMasterAdmin && (
         <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 text-center text-xs font-medium text-amber-200">
           وضع المعاينة الخاص بالمسؤول ({MASTER_ADMIN_EMAIL}) — الصفحة موقوفة حالياً عن الزوار، ويمكنك إعادة نشرها من «لوحة المسؤول».
@@ -701,12 +691,6 @@ export default function App() {
           onRecordReelCreated={recordReelCreated}
           onRecordReelExported={recordReelExported}
           onRecordSadaqahShared={recordSadaqahShared}
-        />
-
-        <AIStudioSuiteSection
-          surahs={surahs}
-          onLoadVerseIntoStudio={handleLoadVerseFromTool}
-          onApplyCustomBackground={handleApplyAIBackground}
         />
 
         <IslamicToolsSection
