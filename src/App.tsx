@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { ShieldCheck } from 'lucide-react';
-import { AdminControlModal } from './components/AdminControlModal';
+import { AdminControlModal, type AdminSection } from './components/AdminControlModal';
 import { FeaturesAndSadaqah } from './components/FeaturesAndSadaqah';
 import { HeroSection } from './components/HeroSection';
 import { IslamicToolsSection } from './components/IslamicToolsSection';
 import { Navbar } from './components/Navbar';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { StudioWorkspace } from './components/StudioWorkspace';
+import { TikTokKhatmahSection } from './components/TikTokKhatmahSection';
 import {
   BACKGROUNDS,
   DEFAULT_STUDIO_SETTINGS,
@@ -165,6 +166,8 @@ export default function App() {
   const [isStatsLoaded, setIsStatsLoaded] = useState<boolean>(false);
   const [managedPresets, setManagedPresets] = useState<ManagedPresetRecord[]>([]);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
+  const [adminInitialSection, setAdminInitialSection] =
+    useState<AdminSection>('general');
 
   const userModifiedStudioRef = useRef<boolean>(hasUrlOverrides);
   const appliedRemoteDefaultsOnceRef = useRef<boolean>(false);
@@ -515,6 +518,30 @@ export default function App() {
     [scrollToStudio, recordReelCreated]
   );
 
+  const handleLoadTikTokBatchIntoStudio = useCallback(
+    (surahId: number, fromAyah: number, toAyah: number, reciterId: string) => {
+      userModifiedStudioRef.current = true;
+      setActivePresetId(null);
+      setSettings((prev) => ({
+        ...prev,
+        surahId,
+        fromAyah,
+        toAyah: Math.max(fromAyah, Math.min(fromAyah + 29, toAyah)),
+        reciterId: RECITERS.some((r) => r.id === reciterId)
+          ? reciterId
+          : prev.reciterId,
+      }));
+      recordReelCreated();
+      scrollToStudio();
+    },
+    [scrollToStudio, recordReelCreated]
+  );
+
+  const openAdminModalSection = useCallback((section: AdminSection) => {
+    setAdminInitialSection(section);
+    setIsAdminModalOpen(true);
+  }, []);
+
   const buildShareUrl = useCallback(
     (customOverrides?: Partial<StudioSettings>) => {
       const target = { ...settings, ...customOverrides };
@@ -622,7 +649,7 @@ export default function App() {
           <div className="pt-2">
             <button
               type="button"
-              onClick={() => setIsAdminModalOpen(true)}
+              onClick={() => openAdminModalSection('general')}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800 px-5 py-2.5 text-xs sm:text-sm font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition-colors cursor-pointer"
             >
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -639,6 +666,7 @@ export default function App() {
           publicStats={publicStats}
           managedPresets={managedPresets}
           surahs={surahs}
+          initialSection={adminInitialSection}
         />
       </div>
     );
@@ -657,7 +685,7 @@ export default function App() {
         sadaqahLabel={siteConfig.sadaqahLabel}
         isAdminAuthenticated={isMasterAdmin}
         onStartStudio={scrollToStudio}
-        onOpenAdmin={() => setIsAdminModalOpen(true)}
+        onOpenAdmin={() => openAdminModalSection('general')}
       />
 
       <main className="flex-1">
@@ -693,6 +721,12 @@ export default function App() {
           onRecordSadaqahShared={recordSadaqahShared}
         />
 
+        <TikTokKhatmahSection
+          isMasterAdmin={isMasterAdmin}
+          onLoadBatchIntoStudio={handleLoadTikTokBatchIntoStudio}
+          onOpenAdminTikTokTab={() => openAdminModalSection('tiktok')}
+        />
+
         <IslamicToolsSection
           surahs={surahs}
           sadaqahLabel={siteConfig.sadaqahLabel}
@@ -707,7 +741,7 @@ export default function App() {
           presets={combinedPublicPresets}
           allowCustomSadaqah={siteConfig.allowPublicCustomSadaqah}
           isMasterAdmin={isMasterAdmin}
-          onOpenAdmin={() => setIsAdminModalOpen(true)}
+          onOpenAdmin={() => openAdminModalSection('general')}
           onCreateDedicatedReel={handleCreateDedicatedReel}
           onBuildShareUrlForDedication={handleBuildShareUrlForDedication}
         />
@@ -721,6 +755,7 @@ export default function App() {
         publicStats={publicStats}
         managedPresets={managedPresets}
         surahs={surahs}
+        initialSection={adminInitialSection}
       />
 
       <OfflineIndicator />

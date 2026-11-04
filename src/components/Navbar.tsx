@@ -38,6 +38,12 @@ export function Navbar({
             الاستوديو
           </a>
           <a
+            href="#tiktok-khatmah"
+            className="hover:text-slate-100 hover:underline underline-offset-8 transition-colors whitespace-nowrap shrink-0"
+          >
+            قناة تيك توك
+          </a>
+          <a
             href="#islamic-tools"
             className="hover:text-slate-100 hover:underline underline-offset-8 transition-colors whitespace-nowrap shrink-0"
           >

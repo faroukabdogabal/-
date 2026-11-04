@@ -12,6 +12,41 @@ import {
   getOrInitPlatformMetrics,
   listSavedReelsForUser,
 } from './src/db/reels.ts';
+import {
+  advanceTikTokKhatmahCursor,
+  deleteTikTokOAuthToken,
+  getOrInitTikTokConfig,
+  getTikTokOAuthToken,
+  listRecentPublishLogs,
+  updateTikTokConfig,
+} from './src/db/tiktok.ts';
+import {
+  computeSequentialBatch,
+  DAILY_BROADCAST_SLOTS,
+  OFFICIAL_TIKTOK_CHANNEL_URL,
+  OFFICIAL_TIKTOK_DISPLAY,
+  OFFICIAL_TIKTOK_HANDLE,
+  OFFICIAL_TIKTOK_HASHTAGS,
+  previewUpcomingSchedule,
+} from './src/utils/tiktokKhatmahPlanner.ts';
+import { generateSequentialKhatmahMp4 } from './src/server/tiktokVideoGenerator.ts';
+import {
+  createTikTokAuthorizationUrl,
+  exchangeTikTokOAuthCode,
+  executeNextSequentialTikTokPublish,
+  getTikTokCredentialsStatus,
+  isTikTokJobRunning,
+  resolveContainerBaseUrl,
+  runTikTokSchedulerTick,
+  startTikTokDailyScheduler,
+} from './src/server/tiktokPublisher.ts';
+
+const MASTER_ADMIN_EMAIL_LOWER = 'farouk.gabal@gmail.com';
+
+function isMasterAdminUser(req: AuthRequest): boolean {
+  const email = (req.user?.email || '').toLowerCase();
+  return Boolean(email === MASTER_ADMIN_EMAIL_LOWER && req.user?.email_verified);
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -397,6 +432,430 @@ async function startServer() {
       res.status(500).json({
         error:
           error instanceof Error ? error.message : 'تعذر تحميل الإحصائيات.',
+      });
+    }
+  });
+
+  // ============================================================================
+  // TikTok Sequential Quran Khatmah Automation (@superboda0) — Public & Admin API
+  // ============================================================================
+  app.get('/api/tiktok/public-schedule', async (_req, res) => {
+    try {
+      const [config, token, recentLogs] = await Promise.all([
+        getOrInitTikTokConfig(),
+        getTikTokOAuthToken(),
+        listRecentPublishLogs(12),
+      ]);
+      const creds = getTikTokCredentialsStatus();
+
+      const safeConfig = config || {
+        channelUrl: OFFICIAL_TIKTOK_CHANNEL_URL,
+        channelHandle: OFFICIAL_TIKTOK_HANDLE,
+        isEnabled: true,
+        timezone: 'Africa/Cairo',
+        ayahsPerReel: 10,
+        currentSurahId: 1,
+        currentFromAyah: 1,
+        khatmahCycle: 1,
+        isAigcEnabled: true,
+        privacyLevel: 'PUBLIC_TO_EVERYONE',
+        postMode: 'DIRECT_POST',
+        hashtags: OFFICIAL_TIKTOK_HASHTAGS,
+        totalPublishedCount: 0,
+        lastPublishedAt: null,
+        lastError: null,
+      };
+
+      const currentBatch = computeSequentialBatch(
+        safeConfig.currentSurahId,
+        safeConfig.currentFromAyah,
+        safeConfig.khatmahCycle,
+        safeConfig.ayahsPerReel
+      );
+
+      const upcoming = previewUpcomingSchedule({
+        currentSurahId: safeConfig.currentSurahId,
+        currentFromAyah: safeConfig.currentFromAyah,
+        khatmahCycle: safeConfig.khatmahCycle,
+        ayahsPerReel: safeConfig.ayahsPerReel,
+        timezone: safeConfig.timezone,
+        hashtags: safeConfig.hashtags,
+        count: 10,
+      });
+
+      res.json({
+        channel: {
+          url: OFFICIAL_TIKTOK_CHANNEL_URL,
+          display: OFFICIAL_TIKTOK_DISPLAY,
+          handle: OFFICIAL_TIKTOK_HANDLE,
+          connectedUsername: token?.username || null,
+          connectedDisplayName: token?.displayName || null,
+          isAccountConnected: Boolean(token),
+          hasApiCredentials: creds.isConfigured,
+        },
+        automation: {
+          isEnabled: safeConfig.isEnabled,
+          timezone: safeConfig.timezone,
+          ayahsPerReel: safeConfig.ayahsPerReel,
+          currentSurahId: safeConfig.currentSurahId,
+          currentFromAyah: safeConfig.currentFromAyah,
+          khatmahCycle: safeConfig.khatmahCycle,
+          isAigcEnabled: safeConfig.isAigcEnabled,
+          postMode: safeConfig.postMode,
+          hashtags: safeConfig.hashtags,
+          totalPublishedCount: safeConfig.totalPublishedCount,
+          lastPublishedAt: safeConfig.lastPublishedAt,
+          isJobRunning: isTikTokJobRunning(),
+        },
+        dailySlots: DAILY_BROADCAST_SLOTS,
+        currentBatch,
+        upcoming,
+        recentLogs: recentLogs.map((l) => ({
+          id: l.id,
+          slotKey: l.slotKey,
+          scheduledTimeLabel: l.scheduledTimeLabel,
+          khatmahCycle: l.khatmahCycle,
+          surahId: l.surahId,
+          surahNameArabic: l.surahNameArabic,
+          fromAyah: l.fromAyah,
+          toAyah: l.toAyah,
+          reciterId: l.reciterId,
+          reciterNameArabic: l.reciterNameArabic,
+          isAigc: l.isAigc,
+          status: l.status,
+          videoDurationSec: l.videoDurationSec,
+          createdAt: l.createdAt,
+        })),
+      });
+    } catch (error) {
+      console.error('Failed to fetch public TikTok schedule:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error
+            ? error.message
+            : 'تعذر تحميل جدول الختمة اليومية لتيك توك.',
+      });
+    }
+  });
+
+  // OAuth 2.0 Callback Handler (Popup flow per oauth-integration guidelines)
+  app.get(['/auth/tiktok/callback', '/auth/tiktok/callback/'], async (req, res) => {
+    const code = typeof req.query.code === 'string' ? req.query.code : '';
+    const state = typeof req.query.state === 'string' ? req.query.state : '';
+    const oauthErr =
+      typeof req.query.error_description === 'string'
+        ? req.query.error_description
+        : typeof req.query.error === 'string'
+        ? req.query.error
+        : '';
+
+    if (oauthErr || !code) {
+      const safeErr = (oauthErr || 'لم يتم استلام رمز التفويض من تيك توك.')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      res.status(400).send(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head><meta charset="utf-8" /><title>ربط قناة تيك توك</title></head>
+  <body style="font-family:sans-serif;background:#0B0F14;color:#F8FAFC;padding:32px;text-align:center;">
+    <h3 style="color:#F87171;">تعذر إتمام ربط حساب تيك توك</h3>
+    <p style="color:#CBD5E1;font-size:14px;">${safeErr}</p>
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', provider: 'tiktok', message: ${JSON.stringify(
+          oauthErr || 'تعذر إتمام ربط حساب تيك توك'
+        )} }, '*');
+      }
+    </script>
+  </body>
+</html>`);
+      return;
+    }
+
+    try {
+      const fallbackRedirectUri = `${resolveContainerBaseUrl()}/auth/tiktok/callback`;
+      await exchangeTikTokOAuthCode({
+        code,
+        state,
+        fallbackRedirectUri,
+      });
+
+      res.send(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head><meta charset="utf-8" /><title>تم ربط قناة تيك توك بنجاح</title></head>
+  <body style="font-family:sans-serif;background:#0B0F14;color:#F8FAFC;padding:32px;text-align:center;">
+    <h3 style="color:#34D399;">تم ربط قناة تيك توك (@superboda0) بنجاح</h3>
+    <p style="color:#CBD5E1;font-size:14px;">سيتم إغلاق هذه النافذة تلقائياً...</p>
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', provider: 'tiktok' }, '*');
+        window.close();
+      } else {
+        window.location.href = '/';
+      }
+    </script>
+  </body>
+</html>`);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'حدث خطأ أثناء تبديل رمز تيك توك';
+      res.status(500).send(`<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head><meta charset="utf-8" /><title>خطأ في ربط تيك توك</title></head>
+  <body style="font-family:sans-serif;background:#0B0F14;color:#F8FAFC;padding:32px;text-align:center;">
+    <h3 style="color:#F87171;">تعذر إكمال الربط</h3>
+    <p style="color:#CBD5E1;font-size:14px;">${msg
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')}</p>
+    <script>
+      if (window.opener) {
+        window.opener.postMessage({ type: 'OAUTH_AUTH_ERROR', provider: 'tiktok', message: ${JSON.stringify(
+          msg
+        )} }, '*');
+      }
+    </script>
+  </body>
+</html>`);
+    }
+  });
+
+  // Master-Admin Only: Full TikTok Status & Logs
+  app.get('/api/tiktok/admin/status', requireAuth, async (req: AuthRequest, res) => {
+    if (!isMasterAdminUser(req)) {
+      res.status(403).json({ error: 'غير مصرح إلا للمسؤول العام الوحيد.' });
+      return;
+    }
+
+    try {
+      const [config, token, logs] = await Promise.all([
+        getOrInitTikTokConfig(),
+        getTikTokOAuthToken(),
+        listRecentPublishLogs(25),
+      ]);
+      const creds = getTikTokCredentialsStatus();
+      const currentBatch = computeSequentialBatch(
+        config.currentSurahId,
+        config.currentFromAyah,
+        config.khatmahCycle,
+        config.ayahsPerReel
+      );
+
+      res.json({
+        config,
+        credentials: creds,
+        account: token
+          ? {
+              openId: token.openId,
+              username: token.username,
+              displayName: token.displayName,
+              avatarUrl: token.avatarUrl,
+              scope: token.scope,
+              expiresAt: token.expiresAt,
+              refreshExpiresAt: token.refreshExpiresAt,
+              updatedAt: token.updatedAt,
+            }
+          : null,
+        currentBatch,
+        isJobRunning: isTikTokJobRunning(),
+        logs,
+      });
+    } catch (error) {
+      console.error('Admin TikTok status error:', error);
+      res.status(500).json({
+        error:
+          error instanceof Error ? error.message : 'تعذر قراءة حالة أتمتة تيك توك.',
+      });
+    }
+  });
+
+  // Master-Admin Only: Construct TikTok OAuth v2 Provider URL
+  app.get('/api/tiktok/auth/url', requireAuth, async (req: AuthRequest, res) => {
+    if (!isMasterAdminUser(req)) {
+      res.status(403).json({ error: 'غير مصرح إلا للمسؤول العام الوحيد.' });
+      return;
+    }
+
+    try {
+      const explicitRedirect =
+        typeof req.query.redirect_uri === 'string' &&
+        req.query.redirect_uri.startsWith('http')
+          ? req.query.redirect_uri.trim()
+          : `${resolveContainerBaseUrl()}/auth/tiktok/callback`;
+
+      const url = createTikTokAuthorizationUrl(explicitRedirect);
+      res.json({ url, redirectUri: explicitRedirect });
+    } catch (error) {
+      res.status(400).json({
+        error:
+          error instanceof Error ? error.message : 'تعذر إنشاء رابط تفويض تيك توك.',
+      });
+    }
+  });
+
+  // Master-Admin Only: Disconnect TikTok OAuth Token
+  app.post(
+    '/api/tiktok/admin/disconnect',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      if (!isMasterAdminUser(req)) {
+        res.status(403).json({ error: 'غير مصرح إلا للمسؤول العام الوحيد.' });
+        return;
+      }
+      try {
+        await deleteTikTokOAuthToken();
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({
+          error:
+            error instanceof Error ? error.message : 'تعذر فصل حساب تيك توك.',
+        });
+      }
+    }
+  );
+
+  // Master-Admin Only: Update TikTok Automation Config / Cursor / AIGC / Hashtags
+  app.put('/api/tiktok/admin/config', requireAuth, async (req: AuthRequest, res) => {
+    if (!isMasterAdminUser(req)) {
+      res.status(403).json({ error: 'غير مصرح إلا للمسؤول العام الوحيد.' });
+      return;
+    }
+
+    try {
+      const body = req.body || {};
+      const updated = await updateTikTokConfig({
+        isEnabled:
+          typeof body.isEnabled === 'boolean' ? body.isEnabled : undefined,
+        timezone: typeof body.timezone === 'string' ? body.timezone : undefined,
+        currentSurahId:
+          typeof body.currentSurahId === 'number'
+            ? body.currentSurahId
+            : undefined,
+        currentFromAyah:
+          typeof body.currentFromAyah === 'number'
+            ? body.currentFromAyah
+            : undefined,
+        khatmahCycle:
+          typeof body.khatmahCycle === 'number' ? body.khatmahCycle : undefined,
+        ayahsPerReel:
+          typeof body.ayahsPerReel === 'number' ? body.ayahsPerReel : undefined,
+        isAigcEnabled:
+          typeof body.isAigcEnabled === 'boolean'
+            ? body.isAigcEnabled
+            : undefined,
+        privacyLevel:
+          typeof body.privacyLevel === 'string' ? body.privacyLevel : undefined,
+        postMode: typeof body.postMode === 'string' ? body.postMode : undefined,
+        hashtags: typeof body.hashtags === 'string' ? body.hashtags : undefined,
+        lastError: body.clearError ? null : undefined,
+      });
+
+      res.json({ config: updated });
+    } catch (error) {
+      res.status(500).json({
+        error:
+          error instanceof Error ? error.message : 'تعذر حفظ إعدادات أتمتة تيك توك.',
+      });
+    }
+  });
+
+  // Master-Admin Only: Immediately Generate & Publish Next 10-Ayah Reel to TikTok
+  app.post(
+    '/api/tiktok/admin/publish-next',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      if (!isMasterAdminUser(req)) {
+        res.status(403).json({ error: 'غير مصرح إلا للمسؤول العام الوحيد.' });
+        return;
+      }
+
+      try {
+        const origin =
+          typeof req.body?.origin === 'string' ? req.body.origin : undefined;
+        const result = await executeNextSequentialTikTokPublish({
+          slotKey: `manual_${Date.now()}`,
+          scheduledTimeLabel: 'نشر فوري يدوي من لوحة المسؤول',
+          appBaseUrl: resolveContainerBaseUrl(origin),
+        });
+        res.json(result);
+      } catch (error) {
+        res.status(400).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'تعذر إتمام النشر الفوري على تيك توك.',
+        });
+      }
+    }
+  );
+
+  // Master-Admin Only: Generate & Download Next 10-Ayah MP4 Video Directly (with optional cursor advance)
+  app.post(
+    '/api/tiktok/admin/download-next-mp4',
+    requireAuth,
+    async (req: AuthRequest, res) => {
+      if (!isMasterAdminUser(req)) {
+        res.status(403).json({ error: 'غير مصرح إلا للمسؤول العام الوحيد.' });
+        return;
+      }
+
+      try {
+        const config = await getOrInitTikTokConfig();
+        const batch = computeSequentialBatch(
+          config.currentSurahId,
+          config.currentFromAyah,
+          config.khatmahCycle,
+          config.ayahsPerReel
+        );
+        const origin =
+          typeof req.body?.origin === 'string' ? req.body.origin : undefined;
+        const advanceAfterDownload = Boolean(req.body?.advanceCursor);
+
+        const generated = await generateSequentialKhatmahMp4({
+          batch,
+          appBaseUrl: resolveContainerBaseUrl(origin),
+        });
+
+        if (advanceAfterDownload) {
+          await advanceTikTokKhatmahCursor(batch.nextCursor);
+        }
+
+        res.setHeader('Content-Type', 'video/mp4');
+        res.setHeader(
+          'Content-Disposition',
+          `attachment; filename="${generated.fileName}"`
+        );
+        res.setHeader('Content-Length', String(generated.mp4Buffer.byteLength));
+        res.send(generated.mp4Buffer);
+      } catch (error) {
+        res.status(500).json({
+          error:
+            error instanceof Error
+              ? error.message
+              : 'تعذر توليد ملف الفيديو MP4 للدفعة الحالية.',
+        });
+      }
+    }
+  );
+
+  // Optional External Cloud Scheduler / Cron Trigger Endpoint
+  app.post('/api/tiktok/cron-tick', async (req, res) => {
+    const configuredSecret = (process.env.CRON_SECRET || '').trim();
+    if (configuredSecret) {
+      const provided =
+        req.headers['x-cron-secret'] ||
+        req.headers.authorization?.replace(/^Bearer\s+/i, '') ||
+        '';
+      if (provided !== configuredSecret) {
+        res.status(401).json({ error: 'Unauthorized cron trigger' });
+        return;
+      }
+    }
+
+    try {
+      const tickResult = await runTikTokSchedulerTick(new Date());
+      res.json(tickResult);
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : 'Cron tick failed',
       });
     }
   });
@@ -905,6 +1364,7 @@ async function startServer() {
 
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Quran Reels server listening on http://0.0.0.0:${PORT}`);
+    startTikTokDailyScheduler();
   });
 }
 

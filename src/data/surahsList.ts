@@ -1,4 +1,4 @@
-import { SurahMeta } from '../types/quran';
+import type { SurahMeta } from '../types/quran.ts';
 
 export const SURAHS_FALLBACK: SurahMeta[] = [
   { id: 1, nameArabic: 'الفاتحة', nameSimple: 'Al-Fatihah', versesCount: 7, revelationPlace: 'makkah' },

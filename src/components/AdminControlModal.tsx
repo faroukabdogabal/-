@@ -32,6 +32,9 @@ import {
   toggleManagedPresetStatusAsAdmin,
 } from '../firebase';
 import { SurahMeta } from '../types/quran';
+import { TikTokAdminPanel } from './TikTokAdminPanel';
+
+export type AdminSection = 'general' | 'tiktok' | 'presets' | 'stats' | 'permissions';
 
 interface AdminControlModalProps {
   isOpen: boolean;
@@ -41,9 +44,8 @@ interface AdminControlModalProps {
   publicStats: PublicStatsData;
   managedPresets: ManagedPresetRecord[];
   surahs: SurahMeta[];
+  initialSection?: AdminSection;
 }
-
-type AdminSection = 'general' | 'presets' | 'stats' | 'permissions';
 
 export function AdminControlModal({
   isOpen,
@@ -53,8 +55,9 @@ export function AdminControlModal({
   publicStats,
   managedPresets,
   surahs,
+  initialSection = 'general',
 }: AdminControlModalProps) {
-  const [activeSection, setActiveSection] = useState<AdminSection>('general');
+  const [activeSection, setActiveSection] = useState<AdminSection>(initialSection);
   const [formState, setFormState] = useState<SiteConfigData>(siteConfig);
   const [statsForm, setStatsForm] = useState<PublicStatsData>(publicStats);
   const [isSaving, setIsSaving] = useState(false);
@@ -79,6 +82,12 @@ export function AdminControlModal({
   useEffect(() => {
     setStatsForm(publicStats);
   }, [publicStats, isOpen]);
+
+  useEffect(() => {
+    if (isOpen && initialSection) {
+      setActiveSection(initialSection);
+    }
+  }, [isOpen, initialSection]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -340,7 +349,7 @@ export function AdminControlModal({
               </div>
 
               {/* Navigation Tabs */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 rounded-lg bg-[#0E131A] p-1.5 border border-slate-800">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 rounded-lg bg-[#0E131A] p-1.5 border border-slate-800">
                 <button
                   type="button"
                   onClick={() => setActiveSection('general')}
@@ -351,6 +360,17 @@ export function AdminControlModal({
                   }`}
                 >
                   النشر وتعديل الصفحة
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('tiktok')}
+                  className={`rounded-md px-3 py-2 text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                    activeSection === 'tiktok'
+                      ? 'bg-slate-800 text-emerald-300'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  أتمتة تيك توك
                 </button>
                 <button
                   type="button"
@@ -372,18 +392,18 @@ export function AdminControlModal({
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  عداد الإحصائيات العام
+                  عداد الإحصائيات
                 </button>
                 <button
                   type="button"
                   onClick={() => setActiveSection('permissions')}
-                  className={`rounded-md px-3 py-2 text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap ${
+                  className={`rounded-md px-3 py-2 text-xs sm:text-sm font-semibold transition-colors cursor-pointer whitespace-nowrap col-span-2 sm:col-span-1 ${
                     activeSection === 'permissions'
                       ? 'bg-slate-800 text-emerald-300'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  وثيقة الأذونات والوكالة
+                  الأذونات والوكالة
                 </button>
               </div>
 
@@ -699,6 +719,11 @@ export function AdminControlModal({
                     </button>
                   </div>
                 </form>
+              )}
+
+              {/* SECTION 1.5: TIKTOK SEQUENTIAL KHATMAH AUTOMATION (@superboda0) */}
+              {activeSection === 'tiktok' && (
+                <TikTokAdminPanel currentUser={currentUser} surahs={surahs} />
               )}
 
               {/* SECTION 2: MANAGE PUBLISHED PRESETS */}
